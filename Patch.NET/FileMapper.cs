@@ -5,9 +5,14 @@ namespace PatchDotNet
 {
     public class FileMapper
     {
-        List<FileFragement> Fragements = new List<FileFragement>();
-        private long Position = 0;
-        private int CurrentIndex = 0;
+        protected List<FileFragement> Fragements = new List<FileFragement>();
+        /// <summary>
+        /// Dummy fragment used to conduct binary search
+        /// </summary>
+        /// <returns></returns>
+        protected FileFragement Seeker = new();
+        public long Position { get; protected set; }
+        protected int CurrentFragment = 0;
 
         /// <summary>
         /// Initialize a mapper with given base stream
@@ -21,12 +26,12 @@ namespace PatchDotNet
                     StartPosition = 0,
                     EndPosition = baseStream.Length,
                     ReadPosition = 0,
-                    Reader = new BinaryReader(baseStream)
+                    Stream = baseStream
                 }
             );
         }
         /// <summary>
-        /// Initilize a mapper with a given empty
+        /// Initilize a mapper with the given empty block
         /// </summary>
         /// <param name="length"></param>
         public FileMapper(long length)
@@ -37,20 +42,20 @@ namespace PatchDotNet
                     StartPosition = 0,
                     EndPosition = length,
                     ReadPosition = 0,
-                    Reader = null
+                    Stream = null
                 }
             );
         }
         static FragmentComparer Comparer = new FragmentComparer();
 
-        public int MapRecord(long vPos, long readPos, int chunkLen, BinaryReader reader)
+        public int MapRecord(long vPos, long readPos, int chunkLen, Stream stream)
         {
             var newFrag = new FileFragement
             {
                 StartPosition = vPos,
                 EndPosition = vPos + chunkLen,
                 ReadPosition = readPos,
-                Reader = reader
+                Stream = stream
             };
             var index = Fragements.BinarySearch(newFrag, Comparer);
 
@@ -106,7 +111,7 @@ namespace PatchDotNet
         }
         public bool Seek(long pos)
         {
-            if (pos > Fragements.Last().EndPosition)
+            if (pos > Fragements[Fragements.Count - 1].EndPosition)
             {
                 return false;
             }
@@ -114,7 +119,31 @@ namespace PatchDotNet
             {
                 return true;
             }
+            else if (pos < Position)
+            {
+                Seeker.StartPosition = pos;
+                CurrentFragment = Fragements.BinarySearch(0, CurrentFragment, Seeker, Comparer);
 
+            }
+            else // pos > Position
+            {
+                // Sequential r/w
+                if (pos == Fragements[CurrentFragment].EndPosition + 1)
+                {
+                    CurrentFragment++;
+                }
+                else
+                {
+
+                    Seeker.StartPosition = pos;
+                    CurrentFragment = Fragements.BinarySearch(CurrentFragment, Fragements.Count - CurrentFragment, Seeker, Comparer);
+
+                }
+
+            }
+            Position = pos;
+            if (CurrentFragment < 0) { CurrentFragment = ~CurrentFragment; CurrentFragment -= 1; }
+            return true;
         }
     }
 
