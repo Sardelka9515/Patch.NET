@@ -20,8 +20,12 @@ namespace PatchDotNet
         public int Length;
         public long ReadPosition;
     }
-    public class Patch
+    public class Patch : IDisposable
     {
+        #region HEADER
+        const int Generation = 1;
+        public Guid Guid { get; private set; }
+        #endregion
         public bool CanWrite => Write != null;
         private readonly FileStream _stream;
         public readonly BinaryReader Reader;
@@ -31,8 +35,25 @@ namespace PatchDotNet
         public Patch(string path, bool canWrite)
         {
             _stream = new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, FileShare.None);
+            _stream.Seek(0, SeekOrigin.Begin);
             Reader = new BinaryReader(_stream);
             Writer = canWrite ? new BinaryWriter(_stream) : null;
+
+            // Initialize file
+            if (_stream.Length == 0)
+            {
+                Writer.Write(Generation);
+                Writer.Write((Guid = Guid.NewGuid()).ToString());
+            }
+            else
+            {
+                var gen = Reader.ReadInt32();
+                if (gen != Generation)
+                {
+                    throw new NotSupportedException("Unsupported generation or file format: " + gen);
+                }
+                Guid = Guid.Parse(Reader.ReadString());
+            }
         }
 
         public long Write(long virtualPosition, byte[] chunk)
@@ -40,19 +61,38 @@ namespace PatchDotNet
             // if (Writer == null) { throw new InvalidOperationException("Snapshot does not support writing"); }
 
             // sequential write defragmention
-            if (virtualPosition > 0 && virtualPosition == _lastVirtualPosition + _lastChunkSize)
+            if (virtualPosition > 0 && virtualPosition == _lastVirtualPosition + _lastChunkSize && (_lastChunkSize + (long)chunk.Length) < int.MaxValue)
             {
                 // Seek to last record for modifying chunk length
                 Writer.Seek(-(_lastChunkSize + sizeof(int)), SeekOrigin.End);
 
-                // TODO: add intergrity check here
+#if DETAIL_TRACE
+                Console.WriteLine($"merging chunk with previous record: {_lastVirtualPosition}, {_lastChunkSize}, {virtualPosition}");
+
+                // Check
+                var recPos = Writer.Seek(-sizeof(long), SeekOrigin.Current);
+                if (Reader.ReadInt64() != _lastVirtualPosition || Reader.ReadInt32() != _lastChunkSize)
+                {
+                    throw new Exception("Data didn't match");
+                }
+                Writer.Seek(-sizeof(int), SeekOrigin.Current);
+#endif
 
                 // Modify chunk size
                 Writer.Write(_lastChunkSize = _lastChunkSize + chunk.Length);
 
                 // Finally, write chunk to the end
                 Writer.Seek(0, SeekOrigin.End);
-                Writer.Write(chunk, 0, chunk.Length);
+                Writer.Write(chunk);
+
+
+#if DETAIL_TRACE
+                _stream.Position = recPos;
+                ReadRecord(out _, out var pos, out var readPos, out var size);
+                if (pos != _lastVirtualPosition || size != _lastChunkSize) 
+                { throw new Exception("Error when checking data"); }
+                Console.WriteLine("Data OK");
+#endif
             }
             else
             {
@@ -67,7 +107,12 @@ namespace PatchDotNet
             }
             return _stream.Position - chunk.Length;
         }
-        public void Resize(long newSize)
+        public byte[] ReadBytes(long readPos, int count)
+        {
+            _stream.Position = readPos;
+            return Reader.ReadBytes(count);
+        }
+        public void SetLength(long newSize)
         {
             Writer.Seek(0, SeekOrigin.End);
             Writer.Write(newSize);
@@ -89,8 +134,7 @@ namespace PatchDotNet
         /// <returns></returns>
         public bool ReadRecord(out RecordType type, out long virtualPositionOrNewSize, out long readPosition, out int chunkLength)
         {
-            /*
-            if (!_stream.CanRead)
+            if (_stream.Position==_stream.Length)
             {
                 type = RecordType.None;
                 virtualPositionOrNewSize = 0;
@@ -98,7 +142,7 @@ namespace PatchDotNet
                 chunkLength = 0;
                 return false;
             }
-            */
+
 
             // virtual file position or new length
             virtualPositionOrNewSize = Reader.ReadInt64();
@@ -122,7 +166,13 @@ namespace PatchDotNet
             }
 
 
-            return _stream.CanRead;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            _stream.Close();
+            _stream.Dispose();
         }
     }
 }
