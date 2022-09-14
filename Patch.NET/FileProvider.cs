@@ -6,134 +6,100 @@ using System.Threading.Tasks;
 
 namespace PatchDotNet
 {
-    public class FileFragement
+    public struct FileFragement
     {
         public long StartPosition;
         public long EndPosition;
         public long ReadPosition;
-        public BinaryReader Reader;
-    }
-    public class FragmentComparer : IComparer<FileFragement>
-    {
-        public int Compare(FileFragement x, FileFragement y)
+        public long Length => EndPosition - StartPosition + 1;
+        public Stream Stream;
+        public int Read(long startPosition, byte[] buffer, int start, int maxCount)
         {
-            if (x.StartPosition < y.StartPosition)
-            {
-                return -1;
+            if(startPosition>EndPosition){
+                throw new InvalidOperationException("Cannot read data beyond this fragment");
             }
-            else if (x.StartPosition > y.StartPosition)
+
+            // Read overflow check
+            if (maxCount > Length)
             {
-                return 1;
+                maxCount = (int)Length;
             }
-            else
-            {
-                return 0;
+
+            if(Stream==null){
+                // Blank region, possibly a pre-allocated block during resize
+                return maxCount;
+            }
+            else{
+
+                Stream.Position = ReadPosition + startPosition - StartPosition;
+                return Stream.Read(buffer, start, maxCount);
             }
         }
     }
-    public class FileProvider
+    public class FileProvider:FileMapper
     {
-        FileStream BaseStream;
         Patch Current;
-        List<FileFragement> Fragements;
-        static FragmentComparer Comparer = new FragmentComparer();
-        public void Test() {
-        }
-        public FileProvider(string baseFile, bool canWrite, params string[] snapshots)
+        public FileProvider(string baseFile, bool canWrite, params string[] snapshots):base(File.OpenRead(baseFile))
         {
-            BaseStream = new FileStream(baseFile, FileMode.Open, FileAccess.Read);
-            Fragements = new List<FileFragement>() {
-                new FileFragement {
-                    StartPosition=0,
-                    EndPosition=BaseStream.Length,
-                    ReadPosition=0,
-                    Reader=new BinaryReader(BaseStream)
-                }
-            };
             for (int i = 0; i < snapshots.Length - 1; i++)
             {
-                Console.WriteLine("Reading records from "+ snapshots[i]);
+                Console.WriteLine("Reading records from " + snapshots[i]);
                 var snapshot = new Patch(snapshots[i], false);
                 int read = 0;
                 while (snapshot.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
                 {
                     if (type == RecordType.Write)
                     {
-                        MapRecord(vPosOrSize,readPos,chunkLen,snapshot.Reader);
+                        MapRecord(vPosOrSize, readPos, chunkLen, snapshot.Reader.BaseStream);
                     }
                     else if (type == RecordType.SetLength)
                     {
 
                     }
                     read++;
-                    Console.Write("\rRead " +read+" records");
+                    Console.Write("\rRead " + read + " records");
                 }
             }
             Current = new Patch(snapshots[snapshots.Length - 1], canWrite);
         }
-        void MapRecord(long vPos, long readPos, int chunkLen, BinaryReader reader)
+        public void Write(long position, byte[] chunk)
         {
-            var newFrag = new FileFragement
-            {
-                StartPosition = vPos,
-                EndPosition = vPos + chunkLen,
-                ReadPosition = readPos,
-                Reader = reader
-            };
-            var index = Fragements.BinarySearch(newFrag, Comparer);
-
-            // No frag with same starting position
-            if (index < 0)
-            {
-                index = ~index;
-                Fragements.Insert(index, newFrag);
-                RemoveOverlapped(index);
-            }
-            else
-            {
-                Fragements[index] = newFrag;
-                RemoveOverlapped(index);
-            }
+            MapRecord(position, Current.Write(position, chunk), chunk.Length, Current.Reader.BaseStream);
         }
-        void RemoveOverlapped(int newFragIndex)
-        {
-            var newFrag=Fragements[newFragIndex];
 
-            // Remove overlapped parts
-            int remove = 0;
-            for (int i = newFragIndex + 1; i < Fragements.Count; i++)
-            {
-                var tocheck = Fragements[i];
-                if (tocheck.EndPosition <= newFrag.EndPosition)
-                {
-                    remove++;
-                }
-                else if (tocheck.StartPosition <= newFrag.EndPosition)
-                {
-                    var offset = tocheck.StartPosition - 1 - newFrag.EndPosition;
-                    tocheck.StartPosition += offset;
-                    tocheck.ReadPosition += offset;
-                    break;
-                }
-                else if (tocheck.StartPosition == newFrag.EndPosition + 1)
-                {
-                    break;
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
-
-            }
-            if (remove > 0)
-            {
-                Fragements.RemoveRange(newFragIndex + 1, remove);
-                Console.WriteLine($"{remove} fragements removed");
-            }
-        }
-        public void Write(long position,byte[] chunk)
+        public int Read(byte[] buffer, int startIndex, int count)
         {
-            MapRecord(position, Current.Write(position, chunk), chunk.Length, Current.Reader);
+
+            int read = 0;
+            int thisRead;
+            while (read < count && (thisRead = Fragements[CurrentFragment].Read(Position, buffer, startIndex + read, count - read)) != 0)
+            {
+                Position += thisRead;
+                read += thisRead;
+
+                // Proceed to read next fragment
+                if (Fragements[CurrentFragment].EndPosition < Position)
+                {
+                    if (CurrentFragment == Fragements.Count - 1)
+                    {
+                        // End-of-File
+
+#if DEBUG
+                        Console.WriteLine("EoF reached");
+#endif
+
+                        break;
+                    }
+                    else
+                    {
+                        CurrentFragment++;
+                    }
+                }
+            }
+#if DEBUG
+            Console.WriteLine($"Requested {count} bytes, read {read}");
+#endif
+            return read;
         }
     }
 }
