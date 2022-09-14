@@ -7,6 +7,7 @@ namespace UnitTests
         public static void Main(string[] args)
         {
             RecordTest.Run();
+            FileTest.Run();
         }
     }
 }

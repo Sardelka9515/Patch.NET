@@ -26,7 +26,7 @@ namespace PatchDotNet
         const int Generation = 1;
         public Guid Guid { get; private set; }
         #endregion
-        public bool CanWrite => Write != null;
+        public bool CanWrite => Writer != null;
         private readonly FileStream _stream;
         public readonly BinaryReader Reader;
         public readonly BinaryWriter Writer;
@@ -56,17 +56,17 @@ namespace PatchDotNet
             }
         }
 
-        public long Write(long virtualPosition, byte[] chunk)
+        public long Write(long virtualPosition, byte[] buffer,int index,int count)
         {
-            // if (Writer == null) { throw new InvalidOperationException("Snapshot does not support writing"); }
+            // if (Writer == null) { throw new InvalidOperationException("Patch does not support writing"); }
 
             // sequential write defragmention
-            if (virtualPosition > 0 && virtualPosition == _lastVirtualPosition + _lastChunkSize && (_lastChunkSize + (long)chunk.Length) < int.MaxValue)
+            if (virtualPosition > 0 && virtualPosition == _lastVirtualPosition + _lastChunkSize && (_lastChunkSize + (long)count) < int.MaxValue)
             {
                 // Seek to last record for modifying chunk length
                 Writer.Seek(-(_lastChunkSize + sizeof(int)), SeekOrigin.End);
 
-#if DETAIL_TRACE
+#if DETAILED_TRACE
                 Console.WriteLine($"merging chunk with previous record: {_lastVirtualPosition}, {_lastChunkSize}, {virtualPosition}");
 
                 // Check
@@ -79,14 +79,14 @@ namespace PatchDotNet
 #endif
 
                 // Modify chunk size
-                Writer.Write(_lastChunkSize = _lastChunkSize + chunk.Length);
+                Writer.Write(_lastChunkSize = _lastChunkSize + count);
 
                 // Finally, write chunk to the end
                 Writer.Seek(0, SeekOrigin.End);
-                Writer.Write(chunk);
+                Writer.Write(buffer,index,count);
 
 
-#if DETAIL_TRACE
+#if DETAILED_TRACE
                 _stream.Position = recPos;
                 ReadRecord(out _, out var pos, out var readPos, out var size);
                 if (pos != _lastVirtualPosition || size != _lastChunkSize) 
@@ -99,13 +99,13 @@ namespace PatchDotNet
 
                 Writer.Seek(0, SeekOrigin.End);
                 Writer.Write(virtualPosition);
-                Writer.Write(chunk.Length);
-                Writer.Write(chunk, 0, chunk.Length);
+                Writer.Write(count);
+                Writer.Write(buffer, index, count);
                 _lastVirtualPosition = virtualPosition;
-                _lastChunkSize = chunk.Length;
+                _lastChunkSize = count;
 
             }
-            return _stream.Position - chunk.Length;
+            return _stream.Position - count;
         }
         public byte[] ReadBytes(long readPos, int count)
         {

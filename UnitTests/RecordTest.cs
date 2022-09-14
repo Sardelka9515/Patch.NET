@@ -10,13 +10,13 @@ namespace UnitTests
 {
     internal class RecordTest
     {
-        public static void Run(string path = @"M:\Tests\test.patch", int testCount = 100000)
+        public static void Run(string path = @"test\test.patch", int testCount = 1000)
         {
             Patch patch;
 
             // BASIC-TEST
             {
-
+                Directory.CreateDirectory(Directory.GetParent(path).FullName);
                 if (File.Exists(path))
                 {
                     File.Delete(path);
@@ -51,7 +51,7 @@ namespace UnitTests
                     }
                     else
                     {
-                        patch.Write(tests[i].Position, tests[i].Data);
+                        patch.Write(tests[i].Position, tests[i].Data,0, tests[i].Data.Length);
                     }
                     if (i % 100 == 0)
                     {
@@ -110,7 +110,7 @@ namespace UnitTests
                     {
                         Console.WriteLine("Starting position: " + rec.Position);
                     }
-                    patch.Write(rec.Position, rec.Data);
+                    patch.Write(rec.Position, rec.Data,0,rec.Data.Length);
                     data.AddRange(rec.Data);
                 }
                 patch.Dispose();

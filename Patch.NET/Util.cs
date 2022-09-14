@@ -9,6 +9,10 @@ namespace PatchDotNet
     public static class Util
     {
         static Random rand=new Random();
+        public static void RandBytes(byte[] bytes)
+        {
+            rand.NextBytes(bytes);
+        }
         public static int RandInt(int min,int max)
         {
             return rand.Next(min,max);

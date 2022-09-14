@@ -6,67 +6,85 @@ using System.Threading.Tasks;
 
 namespace PatchDotNet
 {
-    public struct FileFragement
-    {
-        public long StartPosition;
-        public long EndPosition;
-        public long ReadPosition;
-        public long Length => EndPosition - StartPosition + 1;
-        public Stream Stream;
-        public int Read(long startPosition, byte[] buffer, int start, int maxCount)
-        {
-            if(startPosition>EndPosition){
-                throw new InvalidOperationException("Cannot read data beyond this fragment");
-            }
-
-            // Read overflow check
-            if (maxCount > Length)
-            {
-                maxCount = (int)Length;
-            }
-
-            if(Stream==null){
-                // Blank region, possibly a pre-allocated block during resize
-                return maxCount;
-            }
-            else{
-
-                Stream.Position = ReadPosition + startPosition - StartPosition;
-                return Stream.Read(buffer, start, maxCount);
-            }
-        }
-    }
-    public class FileProvider:FileMapper
+    public class FileProvider : FileMapper, IDisposable
     {
         Patch Current;
-        public FileProvider(string baseFile, bool canWrite, params string[] snapshots):base(File.OpenRead(baseFile))
+        List<Patch> Patches = new List<Patch>();
+        Dictionary<int,PatchedStream> OpenedStreams=new();
+        public bool CanWrite => Current.CanWrite;
+        public FileProvider(string baseFile, bool canWrite, params string[] patches) : base(File.OpenRead(baseFile))
         {
-            for (int i = 0; i < snapshots.Length - 1; i++)
+            for (int i = 0; i < patches.Length; i++)
             {
-                Console.WriteLine("Reading records from " + snapshots[i]);
-                var snapshot = new Patch(snapshots[i], false);
+                Console.WriteLine("Reading records from " + patches[i]);
+                var patch = new Patch(patches[i], i == patches.Length - 1 && canWrite);
+                Patches.Add(patch);
                 int read = 0;
-                while (snapshot.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
+                while (patch.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
                 {
                     if (type == RecordType.Write)
                     {
-                        MapRecord(vPosOrSize, readPos, chunkLen, snapshot.Reader.BaseStream);
+                        MapRecord(vPosOrSize, readPos, chunkLen, patch.Reader.BaseStream, false);
                     }
                     else if (type == RecordType.SetLength)
                     {
-
+                        SetLength(vPosOrSize);
                     }
                     read++;
                     Console.Write("\rRead " + read + " records");
                 }
+                Console.WriteLine();
             }
-            Current = new Patch(snapshots[snapshots.Length - 1], canWrite);
+            Current = Patches[Patches.Count - 1];
         }
-        public void Write(long position, byte[] chunk)
+        public PatchedStream GetStream()
         {
-            MapRecord(position, Current.Write(position, chunk), chunk.Length, Current.Reader.BaseStream);
+            lock (OpenedStreams)
+            {
+                var newHandle = OpenedStreams.Count > 0 ? OpenedStreams.Last().Value.Handle + 1 : 0;
+                var s = new PatchedStream(this, newHandle, (h) => {
+                    lock (OpenedStreams)
+                    {
+                        OpenedStreams.Remove(newHandle);
+                    }
+                });
+                OpenedStreams.Add(newHandle, s);
+                return s;
+            }
         }
-
+        public void Write(long position, byte[] buffer,int index,int count)
+        {
+            if (position > Length)
+            {
+                throw new InvalidOperationException("Cannot write data beyond end of the file");
+            }
+            MapRecord(position, Current.Write(position, buffer,index,count), count, Current.Reader.BaseStream, true);
+        }
+        public void SetLength(long newLength)
+        {
+            var current = Length;
+            if(current == newLength) { return; }
+            if (newLength > current)
+            {
+                Fragements.Add(new FileFragement
+                {
+                    StartPosition=current,
+                    EndPosition=newLength-1,
+                });
+            }
+            else
+            {
+                Seeker.StartPosition = newLength;
+                var index = Fragements.BinarySearch(Seeker, Comparer);
+                if (index < 0)
+                {
+                    index = ~index;
+                    Fragements[index - 1].SetEnd(newLength-1);
+                }
+                Fragements.RemoveRange(index, Fragements.Count - index);
+                if(Position > Length) { Position = Length; CurrentFragment = Fragements.Count - 1; }
+            }
+        }
         public int Read(byte[] buffer, int startIndex, int count)
         {
 
@@ -97,9 +115,35 @@ namespace PatchDotNet
                 }
             }
 #if DEBUG
-            Console.WriteLine($"Requested {count} bytes, read {read}");
+            // Console.WriteLine($"Requested {count} bytes, read {read}");
 #endif
             return read;
+        }
+        public int ReadByte()
+        {
+            byte[] b = new byte[1];
+            Read(b, 0, 1);
+            return b[0];
+        }
+        public void Flush()
+        {
+            lock (this)
+            {
+                Current.Writer.Flush();
+            }
+        }
+        public void Dispose()
+        {
+            Patches.ForEach(p => p.Dispose());
+            lock (OpenedStreams)
+            {
+                foreach(var s in OpenedStreams.Values)
+                {
+                    s.Invalidate();
+                }
+            }
+            _baseStream?.Close();
+            _baseStream?.Dispose();
         }
     }
 }
