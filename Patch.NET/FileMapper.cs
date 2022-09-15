@@ -61,10 +61,11 @@ namespace PatchDotNet
         /// <returns></returns>
         public int MapRecord(long vPos, long readPos, int chunkLen, Stream stream, bool advance)
         {
-            CheckPosition();
             if (CurrentFragment > 0 && Fragments[CurrentFragment - 1].TryMerge(vPos, readPos, chunkLen, stream))
             {
+                Position+=chunkLen;
                 RemoveOverlapped(CurrentFragment - 1);
+                CheckPosition();
                 return CurrentFragment - 1;
             }
 

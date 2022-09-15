@@ -18,6 +18,7 @@ namespace UnitTests
             var verifyPath = Path.Combine(folder, "verify");
             var patch1 = Path.Combine(folder, "patch1");
             var patch2 = Path.Combine(folder, "patch2");
+            Console.WriteLine("Generating test files");
             var bs = File.Create(basePath);
             var rd = new byte[Util.RandInt(1024*1024*30,1024 * 1024 * 50)];
             Util.RandBytes(rd);
