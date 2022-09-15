@@ -33,17 +33,18 @@ namespace PatchDotNet
         {
             EndPosition = pos;
         }
-        public int Read(long startPosition, byte[] buffer, int start, int maxCount)
+        public int Read(long startPosition, byte[] buffer, int start, int maxCount,Action dump=null)
         {
             if (startPosition > EndPosition)
             {
-                throw new InvalidOperationException("Cannot read data beyond this fragment");
+                dump?.Invoke();
+                throw new InvalidOperationException($"Cannot read data beyond this fragment: {startPosition} end:{EndPosition}");
             }
-
-            // Read overflow check
-            if (maxCount > Length)
+            
+            // Don't ready beyond this fragment
+            if (startPosition + maxCount > EndPosition+1)
             {
-                maxCount = (int)Length;
+                maxCount = (int)(EndPosition + 1-startPosition);
             }
 
             if (Stream == null)

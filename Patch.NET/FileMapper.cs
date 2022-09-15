@@ -27,7 +27,7 @@ namespace PatchDotNet
                 new FileFragement
                 {
                     StartPosition = 0,
-                    EndPosition = baseStream.Length-1,
+                    EndPosition = baseStream.Length - 1,
                     ReadPosition = 0,
                     Stream = baseStream
                 }
@@ -43,7 +43,7 @@ namespace PatchDotNet
                 new FileFragement
                 {
                     StartPosition = 0,
-                    EndPosition = length-1,
+                    EndPosition = length - 1,
                     ReadPosition = 0,
                     Stream = null
                 }
@@ -61,10 +61,10 @@ namespace PatchDotNet
         /// <returns></returns>
         public int MapRecord(long vPos, long readPos, int chunkLen, Stream stream, bool advance)
         {
-            if (Fragements[CurrentFragment].TryMerge(vPos, readPos, chunkLen, stream))
+            if (CurrentFragment > 0 && Fragements[CurrentFragment - 1].TryMerge(vPos, readPos, chunkLen, stream))
             {
-                RemoveOverlapped(CurrentFragment);
-                return CurrentFragment;
+                RemoveOverlapped(CurrentFragment- 1);
+                return CurrentFragment- 1;
             }
 
             var newFrag = new FileFragement
@@ -85,10 +85,36 @@ namespace PatchDotNet
             RemoveOverlapped(index);
             if (advance)
             {
-                Position+=chunkLen;
-                CurrentFragment = index;
+                Position += chunkLen;
+                CurrentFragment = index + 1;
+                CheckPosition();
+                
             }
             return index;
+        }
+        protected void CheckPosition()
+        {
+            // Console.WriteLine(CurrentFragment+"/"+Fragements.Count);
+            // Console.WriteLine(Position+"/"+Length);
+            if (CurrentFragment >= Fragements.Count)
+            {
+                if(Position != Length){
+
+                    throw new Exception("Position exceeded eof");
+                }
+            }
+            else if(Position==Length){
+                if (CurrentFragment != Fragements.Count)
+                {
+                    throw new Exception("Position exceeded eof");
+
+                }
+            }
+            else if(Fragements[CurrentFragment].StartPosition > Position || Fragements[CurrentFragment].EndPosition < Position){
+
+                throw new Exception($"Fragment position mismatch {Fragements[CurrentFragment].StartPosition}, {Position}, {Fragements[CurrentFragment].EndPosition}");
+            }
+
         }
         void RemoveOverlapped(int newFragIndex)
         {
@@ -153,42 +179,6 @@ namespace PatchDotNet
             ;
 
             // Console.WriteLine("===================================");
-        }
-        public bool Seek(long pos)
-        {
-            if (pos > Length)
-            {
-                return false;
-            }
-            else if (pos == Position)
-            {
-                return true;
-            }
-            else if (pos < Position)
-            {
-                Seeker.StartPosition = pos;
-                CurrentFragment = Fragements.BinarySearch(0, CurrentFragment, Seeker, Comparer);
-
-            }
-            else // pos > Position
-            {
-                // Sequential r/w
-                if (pos == Fragements[CurrentFragment].EndPosition + 1)
-                {
-                    CurrentFragment++;
-                }
-                else
-                {
-
-                    Seeker.StartPosition = pos;
-                    CurrentFragment = Fragements.BinarySearch(CurrentFragment, Fragements.Count - CurrentFragment, Seeker, Comparer);
-
-                }
-
-            }
-            Position = pos;
-            if (CurrentFragment < 0) { CurrentFragment = ~CurrentFragment; CurrentFragment -= 1; }
-            return true;
         }
         public void DumpFragments()
         {

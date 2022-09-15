@@ -88,7 +88,6 @@ namespace UnitTests
                     }
                     // Console.WriteLine("Pass " + i);
                 }
-                Console.WriteLine(patch.ReadRecord(out _, out _, out _, out _));
                 patch.Dispose();
             }
 

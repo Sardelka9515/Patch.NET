@@ -18,8 +18,12 @@ namespace UnitTests
             var verifyPath = Path.Combine(folder, "verify");
             var patch1 = Path.Combine(folder, "patch1");
             var patch2 = Path.Combine(folder, "patch2");
-            File.Create(basePath).Close();
-            File.Create(verifyPath).Close();
+            var bs=File.Create(basePath);
+            var rd=new byte[Util.RandInt(5000,60000)];
+            Util.RandBytes(rd);
+            bs.Write(rd,0,rd.Length);
+            bs.Close();
+            File.Copy(basePath,verifyPath,true);
 
 
             RunTest(basePath,verifyPath,patch1);
@@ -71,6 +75,24 @@ namespace UnitTests
                 pStream.Write( chunk,0,chunk.Length);
                 // provider.DumpFragments();
             }
+
+            void TestRead(){
+                for(int i=0;i<100;i++){
+                    var pos = Util.RandLong(0, pStream.Length);
+                    var data = new byte[Util.RandInt(1, 500)];
+                    var data2 = new byte[data.Length];
+                    pStream.Position=verify.Position = pos;
+                    pStream.Read(data, 0, data.Length);
+                    verify.Read(data2, 0, data2.Length);
+                    if (!data.SequenceEqual(data2))
+                    {
+                        throw new Exception("Random read fail");
+                    }
+                }
+            }
+
+
+
             verify.Position = 0;
             pStream.Seek(0,SeekOrigin.Begin);
 
@@ -82,12 +104,14 @@ namespace UnitTests
                     throw new Exception("File corrupted");
                 }
             }
+            TestRead();
 
             verify.Dispose();
-            pStream.Dispose();
+            prov.Dispose();
 
 
-            pStream = new FileProvider(basePath, true, patches).GetStream();
+            prov = new FileProvider(basePath, true, patches);
+            pStream=prov.GetStream();
             verify = File.OpenRead(verifyPath);
 
             verify.Position = 0;
@@ -101,6 +125,7 @@ namespace UnitTests
                     throw new Exception("File corrupted");
                 }
             }
+            TestRead();
             verify.Close();
             verify.Dispose();
             prov.Dispose();

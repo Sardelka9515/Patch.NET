@@ -10,7 +10,7 @@ namespace PatchDotNet
     {
         Patch Current;
         List<Patch> Patches = new List<Patch>();
-        Dictionary<int,PatchedStream> OpenedStreams=new();
+        Dictionary<int, PatchedStream> OpenedStreams = new();
         public bool CanWrite => Current.CanWrite;
         public FileProvider(string baseFile, bool canWrite, params string[] patches) : base(File.OpenRead(baseFile))
         {
@@ -31,9 +31,8 @@ namespace PatchDotNet
                         SetLength(vPosOrSize);
                     }
                     read++;
-                    Console.Write("\rRead " + read + " records");
                 }
-                Console.WriteLine();
+                Console.WriteLine("Read " + read + " records");
             }
             Current = Patches[Patches.Count - 1];
         }
@@ -42,7 +41,8 @@ namespace PatchDotNet
             lock (OpenedStreams)
             {
                 var newHandle = OpenedStreams.Count > 0 ? OpenedStreams.Last().Value.Handle + 1 : 0;
-                var s = new PatchedStream(this, newHandle, (h) => {
+                var s = new PatchedStream(this, newHandle, (h) =>
+                {
                     lock (OpenedStreams)
                     {
                         OpenedStreams.Remove(newHandle);
@@ -52,24 +52,70 @@ namespace PatchDotNet
                 return s;
             }
         }
-        public void Write(long position, byte[] buffer,int index,int count)
+        public void Write(long position, byte[] buffer, int index, int count)
         {
             if (position > Length)
             {
                 throw new InvalidOperationException("Cannot write data beyond end of the file");
             }
-            MapRecord(position, Current.Write(position, buffer,index,count), count, Current.Reader.BaseStream, true);
+            MapRecord(position, Current.Write(position, buffer, index, count), count, Current.Reader.BaseStream, true);
         }
+        public bool Seek(long pos)
+        {
+            // Console.WriteLine($"Seeking position from {Position} to {pos}");
+            if (pos > Length)
+            {
+                return false;
+            }
+            else if (pos == Length)
+            {
+                CurrentFragment = Fragements.Count;
+            }
+            else if (pos == Position)
+            {
+                return true;
+            }
+            else if (pos < Position)
+            {
+                if (CurrentFragment < Fragements.Count && pos >= Fragements[CurrentFragment].StartPosition)
+                {
+                    // Same fragment
+                }
+                else
+                {
+
+                    Seeker.StartPosition = pos;
+                    CurrentFragment = Fragements.BinarySearch(0, CurrentFragment, Seeker, Comparer);
+                }
+
+            }
+            else // pos > Position
+            {
+                Seeker.StartPosition = pos;
+                CurrentFragment = Fragements.BinarySearch(CurrentFragment, Fragements.Count - CurrentFragment, Seeker, Comparer);
+            }
+            Position = pos;
+
+            if (CurrentFragment < 0)
+            {
+                CurrentFragment = (~CurrentFragment) - 1;
+                CheckPosition();
+            }
+            CheckPosition();
+            // Console.WriteLine(CurrentFragment + "/" + Fragements.Count);
+            return true;
+        }
+
         public void SetLength(long newLength)
         {
             var current = Length;
-            if(current == newLength) { return; }
+            if (current == newLength) { return; }
             if (newLength > current)
             {
                 Fragements.Add(new FileFragement
                 {
-                    StartPosition=current,
-                    EndPosition=newLength-1,
+                    StartPosition = current,
+                    EndPosition = newLength - 1,
                 });
             }
             else
@@ -79,18 +125,19 @@ namespace PatchDotNet
                 if (index < 0)
                 {
                     index = ~index;
-                    Fragements[index - 1].SetEnd(newLength-1);
+                    Fragements[index - 1].SetEnd(newLength - 1);
                 }
                 Fragements.RemoveRange(index, Fragements.Count - index);
-                if(Position > Length) { Position = Length; CurrentFragment = Fragements.Count - 1; }
+                if (Position > Length) { Position = Length; CurrentFragment = Fragements.Count - 1; }
             }
         }
         public int Read(byte[] buffer, int startIndex, int count)
         {
-
+            if (CurrentFragment > Fragements.Count - 1) { return 0; }
             int read = 0;
             int thisRead;
-            while (read < count && (thisRead = Fragements[CurrentFragment].Read(Position, buffer, startIndex + read, count - read)) != 0)
+            CheckPosition();
+            while (read < count && (thisRead = Fragements[CurrentFragment].Read(Position, buffer, startIndex + read, count - read, DumpFragments)) != 0)
             {
                 Position += thisRead;
                 read += thisRead;
@@ -113,6 +160,7 @@ namespace PatchDotNet
                         CurrentFragment++;
                     }
                 }
+                CheckPosition();
             }
 #if DEBUG
             // Console.WriteLine($"Requested {count} bytes, read {read}");
@@ -137,7 +185,7 @@ namespace PatchDotNet
             Patches.ForEach(p => p.Dispose());
             lock (OpenedStreams)
             {
-                foreach(var s in OpenedStreams.Values)
+                foreach (var s in OpenedStreams.Values)
                 {
                     s.Invalidate();
                 }
