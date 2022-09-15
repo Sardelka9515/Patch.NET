@@ -52,13 +52,16 @@ namespace PatchDotNet
                 return s;
             }
         }
-        public void Write(long position, byte[] buffer, int index, int count)
+        public void Write(byte[] buffer, int index, int count)
         {
-            if (position > Length)
+            if (Position > Length)
             {
                 throw new InvalidOperationException("Cannot write data beyond end of the file");
             }
-            MapRecord(position, Current.Write(position, buffer, index, count), count, Current.Reader.BaseStream, true);
+            if(count<=0){
+                throw new InvalidOperationException("Byte count to write must be greater than zero");
+            }
+            MapRecord(Position, Current.Write(Position, buffer, index, count), count, Current.Reader.BaseStream, true);
         }
         public bool Seek(long pos)
         {

@@ -61,6 +61,7 @@ namespace PatchDotNet
         /// <returns></returns>
         public int MapRecord(long vPos, long readPos, int chunkLen, Stream stream, bool advance)
         {
+            CheckPosition();
             if (CurrentFragment > 0 && Fragments[CurrentFragment - 1].TryMerge(vPos, readPos, chunkLen, stream))
             {
                 RemoveOverlapped(CurrentFragment - 1);
@@ -105,8 +106,9 @@ namespace PatchDotNet
             {
                 if (Position != Length)
                 {
+                    DumpFragments();
 
-                    throw new Exception("Position eof");
+                    throw new Exception("Position eof: "+Position);
                 }
             }
             else if (Position == Length)
@@ -119,7 +121,7 @@ namespace PatchDotNet
             }
             else if (Fragments[CurrentFragment].StartPosition > Position || Fragments[CurrentFragment].EndPosition < Position)
             {
-
+                DumpFragments();
                 throw new Exception($"Fragment position mismatch {Fragments[CurrentFragment].StartPosition}, {Position}, {Fragments[CurrentFragment].EndPosition}");
             }
 #endif

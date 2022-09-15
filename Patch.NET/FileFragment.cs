@@ -66,7 +66,7 @@ namespace PatchDotNet
         /// <returns></returns>
         public bool TryMerge(long pos, long readPos, int chunkLen, Stream stream)
         {
-            if (pos == EndPosition + 1 && stream == Stream && ((readPos == ReadPosition + Length)||(readPos==0&&ReadPosition==0)))
+            if (pos == EndPosition + 1 && stream == Stream && readPos == ReadPosition + Length)
             {
                 EndPosition += chunkLen;
 

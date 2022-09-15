@@ -12,6 +12,7 @@ namespace PatchDotNet
         private readonly Action<int> _free;
         private readonly int _handle;
         private bool _disposed = false;
+        private long _position;
         public int Handle => _handle;
         internal PatchedStream(FileProvider provider, int fileHandle, Action<int> freeCallback)
         {
@@ -45,12 +46,17 @@ namespace PatchDotNet
             get
             {
                 _check();
-                return _provider.Position;
+                if (_position > Length) { _position = Length; }
+                return _position;
             }
             set
             {
                 _check();
-                _provider.Seek(value);
+                if (value > Length)
+                {
+                    throw new InvalidOperationException("Cannot set position after eof");
+                }
+                _position = value;
             }
         }
         public override void Flush()
@@ -62,41 +68,54 @@ namespace PatchDotNet
         public override int Read(byte[] buffer, int offset, int count)
         {
             _check();
-            return _provider.Read(buffer, offset, count);
+            lock (_provider)
+            {
+
+                _provider.Seek(Position);
+                var read = _provider.Read(buffer, offset, count);
+                Position += read;
+                return read;
+            }
         }
         public override int ReadByte()
         {
             _check();
-            return _provider.ReadByte();
+            lock (_provider)
+            {
+                _provider.Seek(Position);
+                var i = _provider.ReadByte();
+                _position++;
+                return i;
+            }
         }
         public override long Seek(long offset, SeekOrigin origin)
         {
             _check();
-            long pos;
             switch (origin)
             {
-                case SeekOrigin.Begin: pos = offset; break;
-                case SeekOrigin.Current: pos = _provider.Position + offset; break;
-                case SeekOrigin.End: pos = _provider.Length + offset; break;
+                case SeekOrigin.Begin: Position = offset; break;
+                case SeekOrigin.Current: Position += offset; break;
+                case SeekOrigin.End: Position = Length + offset; break;
                 default: throw new NotSupportedException();
             }
-            if (!_provider.Seek(pos))
-            {
-                throw new InvalidOperationException("Cannot seek to position beyond this stream");
-            }
-            return pos;
+            return Position;
         }
 
         public override void SetLength(long value)
         {
             _check();
-            _provider.SetLength(value);
+            lock(_provider){
+                _provider.SetLength(value);
+            }
         }
 
         public override void Write(byte[] buffer, int offset, int count)
         {
             _check();
-            _provider.Write(Position, buffer, offset, count);
+            lock(_provider){
+                _provider.Seek(Position);
+                _provider.Write(buffer, offset, count);
+            }
         }
 
         public override void Close()
