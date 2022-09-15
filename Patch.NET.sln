@@ -5,7 +5,9 @@ VisualStudioVersion = 17.0.31912.275
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Patch.NET", "Patch.NET\Patch.NET.csproj", "{46D29D9D-4521-4924-9D6C-1D9B26AA5E5D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTests", "UnitTests\UnitTests.csproj", "{092339DA-0199-4E64-837D-8DC6754B2B22}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnitTests", "UnitTests\UnitTests.csproj", "{092339DA-0199-4E64-837D-8DC6754B2B22}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Patch.NET.Win32", "Patch.NET.Win32\Patch.NET.Win32.csproj", "{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -31,6 +33,14 @@ Global
 		{092339DA-0199-4E64-837D-8DC6754B2B22}.Release|Any CPU.Build.0 = Release|Any CPU
 		{092339DA-0199-4E64-837D-8DC6754B2B22}.Release|x64.ActiveCfg = Release|x64
 		{092339DA-0199-4E64-837D-8DC6754B2B22}.Release|x64.Build.0 = Release|x64
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Debug|x64.Build.0 = Debug|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|x64.ActiveCfg = Release|Any CPU
+		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

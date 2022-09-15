@@ -6,18 +6,19 @@ using System.Threading.Tasks;
 
 namespace PatchDotNet
 {
-    public class PatchedStream : Stream
+    /// <summary>
+    /// A thread-safe, Redirect-on-Write stream
+    /// </summary>
+    public class RoWStream : Stream
     {
         private readonly FileProvider _provider;
-        private readonly Action<int> _free;
         private readonly int _handle;
         private bool _disposed = false;
         private long _position;
         public int Handle => _handle;
-        internal PatchedStream(FileProvider provider, int fileHandle, Action<int> freeCallback)
+        internal RoWStream(FileProvider provider, int fileHandle)
         {
             _provider = provider;
-            _free = freeCallback;
             _handle = fileHandle;
         }
         public override bool CanRead => true;
@@ -121,9 +122,12 @@ namespace PatchDotNet
         public override void Close()
         {
             _check();
-            _provider.Flush();
-            _disposed = true;
-            _free(_handle);
+            lock (_provider)
+            {
+                _provider.Flush();
+                _disposed = true;
+                _provider.FreeStream(_handle);
+            }
         }
         void _check()
         {

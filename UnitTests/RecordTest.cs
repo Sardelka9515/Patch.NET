@@ -12,6 +12,7 @@ namespace UnitTests
     {
         public static void Run(string path = @"test\test.patch", int testCount = 1000)
         {
+            Console.WriteLine("Testing patch records");
             Patch patch;
 
             // BASIC-TEST

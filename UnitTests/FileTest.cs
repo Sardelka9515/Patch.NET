@@ -57,7 +57,7 @@ namespace UnitTests
 
             {
 
-                Console.Write("\rSequential r/w test ");
+                Console.Write("Sequential r/w test ");
                 for (int i = 0; i < 20; i++)
                 {
                     var pos = Util.RandLong(0, pStream.Length);

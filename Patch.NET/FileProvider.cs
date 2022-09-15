@@ -10,7 +10,8 @@ namespace PatchDotNet
     {
         Patch Current;
         List<Patch> Patches = new List<Patch>();
-        Dictionary<int, PatchedStream> OpenedStreams = new();
+        Dictionary<int, RoWStream> _streams = new();
+        int _streamHandle = 0;
         public bool CanWrite => Current.CanWrite;
         public FileProvider(string baseFile, bool canWrite, params string[] patches) : base(File.OpenRead(baseFile))
         {
@@ -36,23 +37,21 @@ namespace PatchDotNet
             }
             Current = Patches[Patches.Count - 1];
         }
-        public PatchedStream GetStream()
+        public RoWStream GetStream()
         {
-            lock (OpenedStreams)
+            lock (_streams)
             {
-                var newHandle = OpenedStreams.Count > 0 ? OpenedStreams.Last().Value.Handle + 1 : 0;
-                var s = new PatchedStream(this, newHandle, (h) =>
-                {
-                    lock (OpenedStreams)
-                    {
-                        OpenedStreams.Remove(newHandle);
-                    }
-                });
-                OpenedStreams.Add(newHandle, s);
+                var s = new RoWStream(this, _streamHandle);
+                _streams.Add(_streamHandle, s);
+                _streamHandle++;
                 return s;
             }
         }
-        public void Write(byte[] buffer, int index, int count)
+        internal void FreeStream(int handle)
+        {
+            _streams.Remove(handle);
+        }
+        internal void Write(byte[] buffer, int index, int count)
         {
             if (Position > Length)
             {
@@ -63,7 +62,7 @@ namespace PatchDotNet
             }
             MapRecord(Position, Current.Write(Position, buffer, index, count), count, Current.Reader.BaseStream, true);
         }
-        public bool Seek(long pos)
+        internal bool Seek(long pos)
         {
             // Console.WriteLine($"Seeking position from {Position} to {pos}");
             if (pos > Length)
@@ -106,7 +105,7 @@ namespace PatchDotNet
             CheckPosition();
             return true;
         }
-        public void SetLength(long newLen){
+        internal void SetLength(long newLen){
             Resize(newLen);
             Current.WriteResize(newLen);
         }
@@ -144,7 +143,7 @@ namespace PatchDotNet
 
             // DumpFragments();
         }
-        public int Read(byte[] buffer, int startIndex, int count)
+        internal int Read(byte[] buffer, int startIndex, int count)
         {
             if (CurrentFragment > Fragments.Count - 1) { return 0; }
             int read = 0;
@@ -178,7 +177,7 @@ namespace PatchDotNet
 #endif
             return read;
         }
-        public int ReadByte()
+        internal int ReadByte()
         {
             byte[] b = new byte[1];
             Read(b, 0, 1);
@@ -186,17 +185,14 @@ namespace PatchDotNet
         }
         public void Flush()
         {
-            lock (this)
-            {
-                Current.Writer.Flush();
-            }
+            Current.Writer.Flush();
         }
         public void Dispose()
         {
             Patches.ForEach(p => p.Dispose());
-            lock (OpenedStreams)
+            lock (_streams)
             {
-                foreach (var s in OpenedStreams.Values)
+                foreach (var s in _streams.Values)
                 {
                     s.Invalidate();
                 }
