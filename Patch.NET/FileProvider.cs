@@ -28,7 +28,7 @@ namespace PatchDotNet
                     }
                     else if (type == RecordType.SetLength)
                     {
-                        SetLength(vPosOrSize);
+                        Resize(vPosOrSize);
                     }
                     read++;
                 }
@@ -69,7 +69,7 @@ namespace PatchDotNet
             }
             else if (pos == Length)
             {
-                CurrentFragment = Fragements.Count;
+                CurrentFragment = Fragments.Count;
             }
             else if (pos == Position)
             {
@@ -77,7 +77,7 @@ namespace PatchDotNet
             }
             else if (pos < Position)
             {
-                if (CurrentFragment < Fragements.Count && pos >= Fragements[CurrentFragment].StartPosition)
+                if (CurrentFragment < Fragments.Count && pos >= Fragments[CurrentFragment].StartPosition)
                 {
                     // Same fragment
                 }
@@ -85,67 +85,79 @@ namespace PatchDotNet
                 {
 
                     Seeker.StartPosition = pos;
-                    CurrentFragment = Fragements.BinarySearch(0, CurrentFragment, Seeker, Comparer);
+                    CurrentFragment = Fragments.BinarySearch(0, CurrentFragment, Seeker, Comparer);
                 }
 
             }
             else // pos > Position
             {
                 Seeker.StartPosition = pos;
-                CurrentFragment = Fragements.BinarySearch(CurrentFragment, Fragements.Count - CurrentFragment, Seeker, Comparer);
+                CurrentFragment = Fragments.BinarySearch(CurrentFragment, Fragments.Count - CurrentFragment, Seeker, Comparer);
             }
             Position = pos;
 
             if (CurrentFragment < 0)
             {
                 CurrentFragment = (~CurrentFragment) - 1;
-                CheckPosition();
             }
             CheckPosition();
-            // Console.WriteLine(CurrentFragment + "/" + Fragements.Count);
             return true;
         }
+        public void SetLength(long newLen){
+            Resize(newLen);
+            Current.WriteResize(newLen);
+        }
 
-        public void SetLength(long newLength)
+        protected void Resize(long newLength)
         {
             var current = Length;
             if (current == newLength) { return; }
+            // Console.WriteLine($"============Resizing file from {current} to {newLength}===================");
+            // DumpFragments();
             if (newLength > current)
             {
-                Fragements.Add(new FileFragement
+                Fragments.Add(new FileFragement
                 {
                     StartPosition = current,
                     EndPosition = newLength - 1,
                 });
+                // Console.WriteLine("Added one frag to end of the file");
             }
             else
             {
                 Seeker.StartPosition = newLength;
-                var index = Fragements.BinarySearch(Seeker, Comparer);
+                var index = Fragments.BinarySearch(Seeker, Comparer);
                 if (index < 0)
                 {
                     index = ~index;
-                    Fragements[index - 1].SetEnd(newLength - 1);
+                    Fragments[index - 1].SetEnd(newLength - 1);
                 }
-                Fragements.RemoveRange(index, Fragements.Count - index);
-                if (Position > Length) { Position = Length; CurrentFragment = Fragements.Count - 1; }
+                var count=Fragments.Count - index;
+                Fragments.RemoveRange(index, count);
+                // Console.WriteLine($"Removed {count} frags after eof, remaining: {Fragments.Count}");
+                if(Fragments.Count==0){Fragments.Add(new FileFragement{StartPosition=0,EndPosition=-1,Stream=null});}
+                if (Position > Length) { Position = Length; CurrentFragment = Fragments.Count - 1; }
             }
+
+            // DumpFragments();
         }
         public int Read(byte[] buffer, int startIndex, int count)
         {
-            if (CurrentFragment > Fragements.Count - 1) { return 0; }
+            if (CurrentFragment > Fragments.Count - 1) { return 0; }
             int read = 0;
             int thisRead;
             CheckPosition();
-            while (read < count && (thisRead = Fragements[CurrentFragment].Read(Position, buffer, startIndex + read, count - read, DumpFragments)) != 0)
+            while (read < count && (thisRead = Fragments[CurrentFragment].Read(Position, buffer, startIndex + read, count - read)) != 0)
             {
                 Position += thisRead;
                 read += thisRead;
 
                 // Proceed to read next fragment
-                if (Fragements[CurrentFragment].EndPosition < Position)
+                if (Fragments[CurrentFragment].EndPosition < Position)
                 {
-                    if (CurrentFragment == Fragements.Count - 1)
+
+                    CurrentFragment++;
+                    if (CurrentFragment >= Fragments.Count)
                     {
                         // End-of-File
 
@@ -154,10 +166,6 @@ namespace PatchDotNet
 #endif
 
                         break;
-                    }
-                    else
-                    {
-                        CurrentFragment++;
                     }
                 }
                 CheckPosition();

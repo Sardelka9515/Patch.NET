@@ -47,7 +47,7 @@ namespace UnitTests
                         var len = Util.RandLong(0, long.MaxValue);
                         // Console.WriteLine($"SetLength record: "+len);
                         setLen.Add(len);
-                        patch.SetLength(len);
+                        patch.WriteResize(len);
                     }
                     else
                     {

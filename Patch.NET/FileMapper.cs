@@ -5,9 +5,9 @@ namespace PatchDotNet
 {
     public class FileMapper
     {
-        public long Length => Fragements[Fragements.Count - 1].EndPosition + 1;
+        public long Length => Fragments[Fragments.Count - 1].EndPosition + 1;
         protected Stream _baseStream;
-        protected List<FileFragement> Fragements = new List<FileFragement>();
+        protected List<FileFragement> Fragments = new List<FileFragement>();
         /// <summary>
         /// Dummy fragment used to conduct binary search
         /// </summary>
@@ -23,7 +23,7 @@ namespace PatchDotNet
         public FileMapper(Stream baseStream)
         {
             _baseStream = baseStream;
-            Fragements.Add(
+            Fragments.Add(
                 new FileFragement
                 {
                     StartPosition = 0,
@@ -39,7 +39,7 @@ namespace PatchDotNet
         /// <param name="length"></param>
         public FileMapper(long length)
         {
-            Fragements.Add(
+            Fragments.Add(
                 new FileFragement
                 {
                     StartPosition = 0,
@@ -61,10 +61,10 @@ namespace PatchDotNet
         /// <returns></returns>
         public int MapRecord(long vPos, long readPos, int chunkLen, Stream stream, bool advance)
         {
-            if (CurrentFragment > 0 && Fragements[CurrentFragment - 1].TryMerge(vPos, readPos, chunkLen, stream))
+            if (CurrentFragment > 0 && Fragments[CurrentFragment - 1].TryMerge(vPos, readPos, chunkLen, stream))
             {
-                RemoveOverlapped(CurrentFragment- 1);
-                return CurrentFragment- 1;
+                RemoveOverlapped(CurrentFragment - 1);
+                return CurrentFragment - 1;
             }
 
             var newFrag = new FileFragement
@@ -75,50 +75,59 @@ namespace PatchDotNet
                 Stream = stream
             };
 
-            var index = Fragements.BinarySearch(newFrag, Comparer);
+            var index = Fragments.BinarySearch(newFrag, Comparer);
 
             if (index < 0)
             {
                 index = ~index;
             }
-            Fragements.Insert(index, newFrag);
+            Fragments.Insert(index, newFrag);
             RemoveOverlapped(index);
             if (advance)
             {
                 Position += chunkLen;
                 CurrentFragment = index + 1;
                 CheckPosition();
-                
+
             }
             return index;
         }
+        /// <summary>
+        /// Check if position matches current fragment, only used for debugging
+        /// </summary>
         protected void CheckPosition()
         {
+#if DEBUG
+
             // Console.WriteLine(CurrentFragment+"/"+Fragements.Count);
             // Console.WriteLine(Position+"/"+Length);
-            if (CurrentFragment >= Fragements.Count)
+            if (CurrentFragment >= Fragments.Count)
             {
-                if(Position != Length){
-
-                    throw new Exception("Position exceeded eof");
-                }
-            }
-            else if(Position==Length){
-                if (CurrentFragment != Fragements.Count)
+                if (Position != Length)
                 {
-                    throw new Exception("Position exceeded eof");
+
+                    throw new Exception("Position eof");
+                }
+            }
+            else if (Position == Length)
+            {
+                if (CurrentFragment != Fragments.Count)
+                {
+                    throw new Exception("Position eof");
 
                 }
             }
-            else if(Fragements[CurrentFragment].StartPosition > Position || Fragements[CurrentFragment].EndPosition < Position){
+            else if (Fragments[CurrentFragment].StartPosition > Position || Fragments[CurrentFragment].EndPosition < Position)
+            {
 
-                throw new Exception($"Fragment position mismatch {Fragements[CurrentFragment].StartPosition}, {Position}, {Fragements[CurrentFragment].EndPosition}");
+                throw new Exception($"Fragment position mismatch {Fragments[CurrentFragment].StartPosition}, {Position}, {Fragments[CurrentFragment].EndPosition}");
             }
+#endif
 
         }
         void RemoveOverlapped(int newFragIndex)
         {
-            var newFrag = Fragements[newFragIndex];
+            var newFrag = Fragments[newFragIndex];
 
             int remove = 0;
             // Console.WriteLine("================evaluating overlapping==================");
@@ -129,37 +138,37 @@ namespace PatchDotNet
             if (newFragIndex > 0)
             {
                 var i = newFragIndex - 1;
-                var splitted = Fragements[i].Clone();
-                if (Fragements[i].EndPosition >= newFrag.StartPosition)
+                var splitted = Fragments[i].Clone();
+                if (Fragments[i].EndPosition >= newFrag.StartPosition)
                 {
-                    Fragements[i].SetEnd(newFrag.StartPosition - 1);
+                    Fragments[i].SetEnd(newFrag.StartPosition - 1);
                     // Console.WriteLine($"Set end of previous fragment {i} to " + (newFrag.StartPosition - 1));
 
                     // Splitted frag
                     if (splitted.EndPosition > newFrag.EndPosition)
                     {
                         splitted.SetStart(newFrag.EndPosition + 1);
-                        Fragements.Insert(newFragIndex + 1, splitted);
+                        Fragments.Insert(newFragIndex + 1, splitted);
                         // Console.WriteLine("Frag inserted after newfrag: " + splitted.StartPosition);
                         goto end; // No further check needed
                     }
                 }
             }
 
-            for (int i = newFragIndex + 1; i < Fragements.Count; i++)
+            for (int i = newFragIndex + 1; i < Fragments.Count; i++)
             {
                 // Console.WriteLine("Checking fragment "+i);
-                if (Fragements[i].EndPosition <= newFrag.EndPosition)
+                if (Fragments[i].EndPosition <= newFrag.EndPosition)
                 {
                     remove++;
                 }
-                else if (Fragements[i].StartPosition <= newFrag.EndPosition)
+                else if (Fragments[i].StartPosition <= newFrag.EndPosition)
                 {
-                    Fragements[i].SetStart(newFrag.EndPosition + 1);
+                    Fragments[i].SetStart(newFrag.EndPosition + 1);
                     // Console.WriteLine($"Trimmed fragment {i}");
                     break;
                 }
-                else if (Fragements[i].StartPosition == newFrag.EndPosition + 1)
+                else if (Fragments[i].StartPosition == newFrag.EndPosition + 1)
                 {
                     break;
                 }
@@ -171,7 +180,7 @@ namespace PatchDotNet
             }
             if (remove > 0)
             {
-                Fragements.RemoveRange(newFragIndex + 1, remove);
+                Fragments.RemoveRange(newFragIndex + 1, remove);
                 // Console.WriteLine($"{remove} fragements removed");
             }
 
@@ -180,9 +189,12 @@ namespace PatchDotNet
 
             // Console.WriteLine("===================================");
         }
+        /// <summary>
+        /// Print all fragments, only used for debugging
+        /// </summary>
         public void DumpFragments()
         {
-            Fragements.ForEach(f => Console.WriteLine($"[{f.StartPosition}, {f.Length}, {f.EndPosition}] => {f.ReadPosition}"));
+            Fragments.ForEach(f => Console.WriteLine($"[{f.StartPosition}, {f.Length}, {f.EndPosition}] => {f.ReadPosition}"));
         }
     }
 

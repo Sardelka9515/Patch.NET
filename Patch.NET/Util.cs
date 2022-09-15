@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 
 namespace PatchDotNet
 {
@@ -30,7 +31,13 @@ namespace PatchDotNet
             }
             return arr;
         }
-
+        public static string Hash(Stream stream){
+            stream.Position=0;
+            using (SHA256 SHA256 = SHA256.Create())
+            {
+                return Convert.ToBase64String(SHA256.ComputeHash(stream));
+            }
+        }
         public static void RandLongArray(long[] arr, long min, long max)
         {
             for (int i = 0; i < arr.Length; i++)

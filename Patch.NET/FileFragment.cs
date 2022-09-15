@@ -27,17 +27,18 @@ namespace PatchDotNet
         {
             var offset = pos - StartPosition;
             StartPosition += offset;
-            ReadPosition += offset;
+            if(Stream!=null){
+                ReadPosition += offset;
+            }
         }
         public void SetEnd(long pos)
         {
             EndPosition = pos;
         }
-        public int Read(long startPosition, byte[] buffer, int start, int maxCount,Action dump=null)
+        public int Read(long startPosition, byte[] buffer, int start, int maxCount)
         {
             if (startPosition > EndPosition)
             {
-                dump?.Invoke();
                 throw new InvalidOperationException($"Cannot read data beyond this fragment: {startPosition} end:{EndPosition}");
             }
             
@@ -65,7 +66,7 @@ namespace PatchDotNet
         /// <returns></returns>
         public bool TryMerge(long pos, long readPos, int chunkLen, Stream stream)
         {
-            if (pos == EndPosition + 1 && stream == Stream && readPos == ReadPosition + Length)
+            if (pos == EndPosition + 1 && stream == Stream && ((readPos == ReadPosition + Length)||(readPos==0&&ReadPosition==0)))
             {
                 EndPosition += chunkLen;
 

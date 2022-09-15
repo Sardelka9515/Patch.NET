@@ -112,7 +112,7 @@ namespace PatchDotNet
             _stream.Position = readPos;
             return Reader.ReadBytes(count);
         }
-        public void SetLength(long newSize)
+        public void WriteResize(long newSize)
         {
             Writer.Seek(0, SeekOrigin.End);
             Writer.Write(newSize);
