@@ -10,5 +10,13 @@
   <ItemGroup>
     <ProjectReference Include="..\Patch.NET\Patch.NET.csproj" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\Patch.NET.Win32\Patch.NET.Win32.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DokanNet" Version="2.0.5.1" />
+  </ItemGroup>
 
 </Project>

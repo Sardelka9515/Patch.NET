@@ -3,11 +3,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+using System.Security.AccessControl;
 namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
     {
+        public FileInfo FileInfo=new FileInfo(){
+          Attributes=FileAttributes.Normal,
+          CreationTime=DateTime.MinValue,
+          LastAccessTime=DateTime.MinValue,
+          LastWriteTime=DateTime.MinValue, 
+        };
         Patch Current;
         List<Patch> Patches = new List<Patch>();
         Dictionary<int, RoWStream> _streams = new();
