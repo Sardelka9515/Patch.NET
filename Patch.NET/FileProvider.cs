@@ -29,6 +29,7 @@ namespace PatchDotNet
                 int read = 0;
                 while (patch.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
                 {
+                    // Console.WriteLine($"{type} {vPosOrSize} {chunkLen} {readPos}");
                     if (type == RecordType.Write)
                     {
                         MapRecord(vPosOrSize, readPos, chunkLen, patch.Reader.BaseStream, false);
@@ -38,6 +39,7 @@ namespace PatchDotNet
                         Resize(vPosOrSize);
                     }
                     read++;
+
                 }
                 Console.WriteLine("Read " + read + " records");
             }
@@ -49,6 +51,7 @@ namespace PatchDotNet
             {
                 var s = new RoWStream(this, _streamHandle);
                 _streams.Add(_streamHandle, s);
+                Console.WriteLine("Stream created " +_streamHandle);
                 _streamHandle++;
                 return s;
             }
@@ -56,9 +59,11 @@ namespace PatchDotNet
         internal void FreeStream(int handle)
         {
             _streams.Remove(handle);
+            Console.WriteLine("Stream destroyed " + handle);
         }
         internal void Write(byte[] buffer, int index, int count)
         {
+            // Console.WriteLine($"Writing data: {Position}, {buffer.Length}, {count}");
             if (Position > Length)
             {
                 throw new InvalidOperationException("Cannot write data beyond end of the file");
@@ -182,6 +187,26 @@ namespace PatchDotNet
             // Console.WriteLine($"Requested {count} bytes, read {read}");
 #endif
             return read;
+        }
+        public void Check()
+        {
+            for(int i = 0;i< Fragments.Count; i++)
+            {
+                if (i > 0)
+                {
+                    var last = Fragments[i - 1];
+                    var frag = Fragments[i];
+                    if (last.EndPosition + 1 != frag.StartPosition) { throw new Exception("Corrupted fragment at: "+i); }
+                    else if (frag.EndPosition < frag.StartPosition - 1)
+                    {
+                        throw new Exception("invalid frag");
+                    }
+                }
+                else if (Fragments[i].StartPosition != 0)
+                {
+                    throw new Exception("Invalid start fragment");
+                }
+            }
         }
         internal int ReadByte()
         {

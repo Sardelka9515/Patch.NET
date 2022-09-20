@@ -177,7 +177,8 @@ namespace PatchDotNet
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    DumpFragments();
+                    throw new NotImplementedException("Mapping failure occurred at fragment " + i);
                 }
 
             }
@@ -197,7 +198,11 @@ namespace PatchDotNet
         /// </summary>
         public void DumpFragments()
         {
-            Fragments.ForEach(f => Console.WriteLine($"[{f.StartPosition}, {f.Length}, {f.EndPosition}] => {f.ReadPosition}"));
+            for (int i = 0; i < Fragments.Count; i++)
+            {
+                var f = Fragments[i];
+                Console.WriteLine($"{i}[{f.StartPosition}, {f.Length}, {f.EndPosition}] => {f.ReadPosition}");
+            }
         }
     }
 

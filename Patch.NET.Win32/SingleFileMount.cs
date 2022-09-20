@@ -32,11 +32,13 @@ namespace PatchDotNet.Win32
             params object[] parameters)
         {
 #if TRACE
+            if (result != DokanResult.Success) { Console.ForegroundColor = ConsoleColor.Red; }
+            else { Console.ForegroundColor = ConsoleColor.Gray; }
             var extraParameters = parameters != null && parameters.Length > 0
                 ? ", " + string.Join(", ", parameters.Select(x => string.Format(DefaultFormatProvider, "{0}", x)))
                 : string.Empty;
 
-            _logger.Debug(DokanFormat($"{method}('{fileName}', {info}{extraParameters}) -> {result}"));
+            _logger?.Debug(DokanFormat($"{method}('{fileName}', {info}{extraParameters}) -> {result}"));
 #endif
 
             return result;
@@ -110,9 +112,12 @@ namespace PatchDotNet.Win32
             NtStatus result)
         {
 #if TRACE
-            _logger.Debug(
+            if (result != DokanResult.Success) { Console.ForegroundColor = ConsoleColor.Red; }
+            else { Console.ForegroundColor= ConsoleColor.Gray; }
+            _logger?.Debug(
                 DokanFormat(
                     $"{method}('{fileName}', {info}, [{access}], [{share}], [{mode}], [{options}], [{attributes}]) -> {result}"));
+
 #endif
 
             return result;
@@ -292,6 +297,8 @@ namespace PatchDotNet.Win32
         }
         public NtStatus ReadFile(string fileName, byte[] buffer, out int bytesRead, long offset, IDokanFileInfo info)
         {
+            // Console.ForegroundColor = ConsoleColor.Green;
+            // Console.WriteLine($"[Dokan] Reading {fileName}, {offset}, {buffer.Length}");
             if (fileName != _path)
             {
                 bytesRead = 0;
@@ -307,7 +314,7 @@ namespace PatchDotNet.Win32
             }
             else // normal read
             {
-                var stream = info.Context as FileStream;
+                var stream = info.Context as RoWStream;
                 lock (stream) //Protect from overlapped read
                 {
                     stream.Position = offset;
@@ -320,6 +327,8 @@ namespace PatchDotNet.Win32
 
         public NtStatus WriteFile(string fileName, byte[] buffer, out int bytesWritten, long offset, IDokanFileInfo info)
         {
+            // Console.ForegroundColor = ConsoleColor.Yellow;
+            // Console.WriteLine($"[Dokan] Writing {fileName}, {offset}, {buffer.Length}");
             if (fileName != _path)
             {
                 bytesWritten = 0;

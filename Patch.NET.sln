@@ -7,7 +7,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Patch.NET", "Patch.NET\Patc
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnitTests", "UnitTests\UnitTests.csproj", "{092339DA-0199-4E64-837D-8DC6754B2B22}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Patch.NET.Win32", "Patch.NET.Win32\Patch.NET.Win32.csproj", "{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Patch.NET.Win32", "Patch.NET.Win32\Patch.NET.Win32.csproj", "{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RowMount", "RowMount\RowMount.csproj", "{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -41,6 +43,14 @@ Global
 		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|x64.ActiveCfg = Release|Any CPU
 		{E6A52713-3170-466A-A4AA-F56B6B7C3D3B}.Release|x64.Build.0 = Release|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Debug|x64.Build.0 = Debug|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Release|Any CPU.Build.0 = Release|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Release|x64.ActiveCfg = Release|Any CPU
+		{53BB09ED-4ACE-4A5C-8F86-016DBE78D520}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

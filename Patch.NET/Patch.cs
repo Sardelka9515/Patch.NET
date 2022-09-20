@@ -32,6 +32,7 @@ namespace PatchDotNet
         public readonly BinaryWriter Writer;
         private long _lastVirtualPosition = -1;
         private int _lastChunkSize;
+        private bool _lastResize=false;
         public Patch(string path, bool canWrite)
         {
             _stream = new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, FileShare.None);
@@ -61,7 +62,7 @@ namespace PatchDotNet
             // if (Writer == null) { throw new InvalidOperationException("Patch does not support writing"); }
 
             // sequential write defragmention
-            if (virtualPosition > 0 && virtualPosition == _lastVirtualPosition + _lastChunkSize && (_lastChunkSize + (long)count) < int.MaxValue)
+            if (virtualPosition > 0 && virtualPosition == _lastVirtualPosition + _lastChunkSize && (_lastChunkSize + (long)count) < int.MaxValue && !_lastResize)
             {
                 // Seek to last record for modifying chunk length
                 Writer.Seek(-(_lastChunkSize + sizeof(int)), SeekOrigin.End);
@@ -103,7 +104,7 @@ namespace PatchDotNet
                 Writer.Write(buffer, index, count);
                 _lastVirtualPosition = virtualPosition;
                 _lastChunkSize = count;
-
+                _lastResize = false;
             }
             return _stream.Position - count;
         }
@@ -119,6 +120,7 @@ namespace PatchDotNet
 
             // indicates that this is a resize record
             Writer.Write(0);
+            _lastResize=true;
         }
 
         /// <summary>
@@ -162,7 +164,16 @@ namespace PatchDotNet
                 readPosition = _stream.Position;
 
                 // Seek position for reading next record
-                _stream.Seek(chunkLength, SeekOrigin.Current);
+                try
+                {
+
+                    _stream.Seek(chunkLength, SeekOrigin.Current);
+                }
+                catch
+                {
+                    Console.WriteLine($"{chunkLength}, {_stream.Position}/{_stream.Length}");
+                    throw;
+                }
             }
 
 

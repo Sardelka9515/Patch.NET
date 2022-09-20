@@ -21,6 +21,7 @@ namespace PatchDotNet
                 StartPosition = StartPosition,
                 EndPosition = EndPosition,
                 ReadPosition = ReadPosition,
+                Stream = Stream
             };
         }
         public void SetStart(long pos)
@@ -51,6 +52,10 @@ namespace PatchDotNet
             if (Stream == null)
             {
                 // Blank region, possibly a pre-allocated block during resize
+                for (int i = start; i < maxCount; i++)
+                {
+                    buffer[i] = 0;
+                }
                 return maxCount;
             }
             else
