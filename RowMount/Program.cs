@@ -4,42 +4,103 @@ using PatchDotNet;
 using DokanNet;
 using Newtonsoft.Json;
 
-namespace RowMount
+namespace RoWMount
 {
     public class Program
     {
-        public static void Main(string[] args)
+        static FileStore store = null;
+        public static void Main(string[] a)
         {
-            if (args.Length == 0)
-            {
-                args = new string[] { "mount" };
-            }
-            switch (args[0])
-            {
-                case "mount": Mount(args); break;
-            }
-        }
-        public static void Mount(string[] args)
-        {
-            var mountPoint = @"C:\mount\file.vhdx";
-            var store = "DefaultStore.json";
-            string patchId = null;
-            var _readonly = false;
-            args.Parse("mount", x => mountPoint = x);
-            args.Parse("store", x => store = x);
-            args.Parse("patch", x => patchId = x);
+            var commands = new ConsoleCommand();
 
-            if (!File.Exists(store))
+            commands.AddCommand("select", cs => Select(cs[0]),
+                "select fileStorePath", "select the json file representing the FileStore");
+
+            commands.AddCommand("mount", cs => Mount(cs[0], cs[1], bool.Parse(cs[2])),
+                "mount mountPoint patchId canWrite", "mount the file in specified mount point");
+
+            commands.AddCommand("list", cs => ListPatches(cs),
+                "list [parenId]", "list all patches of selected FileStore or chidren of specified patch");
+
+            commands.AddCommand("create", cs => ListPatches(cs),
+                "create path [parentId]", "Create a new patch based on specified parent or base file");
+
+            commands.AddCommand("clear", cs => Console.Clear(),
+                "clear", "clear the console buffer");
+#if DEBUG
+            Select("defaultstore.json");
+#endif
+            while (true)
             {
-                Console.WriteLine("Specified store does not exist, generating template");
-                File.WriteAllText(store, JsonConvert.SerializeObject(new FileStoreInfo(), Formatting.Indented));
-                Console.WriteLine("Please edit the json file and restart the program");
+                try
+                {
+                    var line = Console.ReadLine();
+                    if (line == "exit")
+                    {
+                        break;
+                    }
+                    commands.Run(line);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                    Console.WriteLine(commands.GetText());
+                }
+            }
+
+        }
+        static void ListPatches(string[] _parent)
+        {
+            if (store == null)
+            {
+                Console.WriteLine("No FileStore selected");
                 return;
             }
-            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(store));
-            info.Save = (x) => File.WriteAllText(store, JsonConvert.SerializeObject(x,Formatting.Indented));
-            var fileStore = new FileStore(info);
+            var parent = _parent.Length > 0 ? _parent[0] : null;
+            if (parent != null)
+            {
+                if (!store.Patches.TryGetValue(Guid.Parse(parent),out var pp))
+                {
+                    Console.WriteLine("Specified patch was not found");
+                    return;
+                }
+                Show(new(Guid.Parse(parent), pp));
+            }
+            foreach (var p in parent == null ? store.Patches : store.Patches.Where(x => x.Value.Parent.ToString() == parent))
+            {
+                Show(p);
+            }
+            void Show(KeyValuePair<Guid,Patch> patch)
+            {
+                Console.WriteLine("========================================================================");
+                Console.WriteLine("{0,-20} {1,-50}", "Guid:", patch.Key);
+                Console.WriteLine("{0,-20} {1,-50}", "Parent:", patch.Value.Parent);
+                Console.WriteLine("{0,-20} {1,-50}", "Path:", patch.Value.Path);
+                Console.WriteLine("{0,-20} {1,-50}", "Size:", Util.FormatSize(patch.Value.Reader.BaseStream.Length));
+                Console.WriteLine("{0,-20} {1,-50}", "Defragmented:", patch.Value.LastDefragmented);
+            }
+        }
+        static void Select(string path)
+        {
 
+            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
+            info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
+            store = new FileStore(info);
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("Specified store does not exist, generating template");
+                File.WriteAllText(path, JsonConvert.SerializeObject(new FileStoreInfo(), Formatting.Indented));
+                Console.WriteLine("Run select again to load updated store");
+                return;
+            }
+        }
+        static void Mount(string mountPoint, string guid, bool canWrite)
+        {
+            if (store == null)
+            {
+                Console.WriteLine("No FileStore selected");
+                return;
+            }
             var dir = Directory.GetParent(mountPoint).FullName;
             Console.WriteLine("Mount point: " + mountPoint);
             Directory.CreateDirectory(dir);
@@ -52,7 +113,7 @@ namespace RowMount
 #endif
 
 
-            var provider = fileStore.GetProvider(patchId == null ? default : Guid.Parse(patchId), !_readonly);
+            var provider = store.GetProvider(Guid.Parse(guid), canWrite);
             var mount = new SingleFileMount(provider, Path.GetFileName(mountPoint), null);
             using var dokan = new Dokan(null);
             var builder = new DokanInstanceBuilder(dokan)
@@ -73,14 +134,15 @@ namespace RowMount
                 {
                     case "clear": Console.Clear(); break;
                     case "dump": provider.DumpFragments(); break;
-                    case "exit": Console.Clear(); goto stop;
+                    case "unmount": Console.Clear(); goto stop;
                     case "check": provider.Check(); break;
                     case "flush": provider.Flush(); break;
+                    case "create": store.CreatePatch(provider, cs[1]); break;
                     case "read":
                         var st = provider.GetStream();
                         st.Position = long.Parse(cs[1]);
                         var data = new byte[64];
-                        Console.WriteLine($"Read { st.Read(data, 0, data.Length)} bytes:");
+                        Console.WriteLine($"Read {st.Read(data, 0, data.Length)} bytes:");
                         Console.WriteLine(data.Dump());
                         st.Dispose();
                         break;
@@ -93,7 +155,9 @@ namespace RowMount
             }
         stop:
             provider.Dispose();
+            Console.WriteLine("File closed");
         }
+
 
         static void Test(string replicated, FileProvider provider)
         {

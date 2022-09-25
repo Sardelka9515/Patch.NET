@@ -8,9 +8,9 @@ namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
     {
-        public FileInfo FileInfo = new FileInfo()
+        public FileInfo FileInfo => new FileInfo()
         {
-            Attributes = FileAttributes.Normal,
+            Attributes = CanWrite ? FileAttributes.Normal : FileAttributes.ReadOnly,
             CreationTime = DateTime.MinValue,
             LastAccessTime = DateTime.MinValue,
             LastWriteTime = DateTime.MinValue,
@@ -34,8 +34,8 @@ namespace PatchDotNet
                 Console.WriteLine("Reading records from " + patches[i]);
                 var patch = new Patch(patches[i], i == patches.Length - 1 && canWrite);
                 if (parent != patch.Parent)
-                { 
-                    throw new ArgumentException($"The patch chain is broken at index {i}. Patch parent is {patch.Parent}, expecting {parent}"); 
+                {
+                    throw new ArgumentException($"The patch chain is broken at index {i}. Patch parent is {patch.Parent}, expecting {parent}");
                 }
                 parent = patch.Guid;
                 _patches.Add(patch);
@@ -67,8 +67,9 @@ namespace PatchDotNet
         {
             lock (this)
             {
+                Flush();
                 if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
-                var p =new Patch(path,true);
+                var p = new Patch(path, true);
                 p.Parent = Current.Guid;
                 _patches.Add(p);
                 Current.Writer.Flush();
@@ -250,7 +251,7 @@ namespace PatchDotNet
         public void Flush()
         {
             _debug?.Flush();
-            Current.Writer.Flush();
+            Current.Writer?.Flush();
         }
         public void Dispose()
         {

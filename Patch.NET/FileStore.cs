@@ -10,7 +10,7 @@ namespace PatchDotNet
     public class FileStore : IDisposable
     {
         public readonly string BaseFile;
-        public Dictionary<Guid, Patch> Patches = new();
+        public readonly Dictionary<Guid, Patch> Patches = new();
         readonly FileStoreInfo _info;
         public FileStore(FileStoreInfo info)
         {

@@ -157,7 +157,7 @@ namespace PatchDotNet.Win32
                                 attributes, DokanResult.PathNotFound);
 
                         }
-                        if (!_provider.CanWrite && access.HasFlag(FileAccess.GenericWrite))
+                        if (!_provider.CanWrite && access.HasFlag(FileAccess.WriteData))
                         {
                             return Trace(nameof(CreateFile), fileName, info, access, share, mode, options,
                                 attributes, DokanResult.AccessDenied);
