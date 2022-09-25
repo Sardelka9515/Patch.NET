@@ -100,6 +100,7 @@ namespace PatchDotNet
             if (line.ToLower() == "help")
             {
                 Console.WriteLine(GetText());
+                return;
             }
             var cs = Util.SplitWithQuotes(line);
             if (Commands.TryGetValue(cs[0].ToLower(), out var tup))

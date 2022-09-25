@@ -51,6 +51,7 @@ namespace PatchDotNet
         /// <exception cref="InvalidOperationException"></exception>
         public void CreatePatch(FileProvider provider, string path)
         {
+            if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
             if (Path.GetFullPath(provider.BasePath) != Path.GetFullPath(BaseFile)
                 || provider.Patches.Where(x => !Patches.ContainsKey(x.Guid)).Any())
             {
@@ -128,18 +129,29 @@ namespace PatchDotNet
         }
         void Reflect()
         {
-            _info.Patches = Patches.Select(x => x.Value.Path).ToArray();
+            _info.Patches = Patches.Select(x => Path.GetRelativePath(Directory.GetCurrentDirectory(), x.Value.Path)).ToArray();
             _info.Save?.Invoke(_info);
         }
 
         public void Dispose()
         {
-            Patches.ForEach(x=>x.Value.Dispose());
+            Patches.ForEach(x => x.Value.Dispose());
             Patches.Clear();
         }
     }
     public class FileStoreInfo
     {
+        public static FileStoreInfo FromJson(string path)
+        {
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("Specified store does not exist, generating template");
+                File.WriteAllText(path, JsonConvert.SerializeObject(new FileStoreInfo(), Formatting.Indented));
+            }
+            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
+            info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
+            return info;
+        }
         public string BaseFile = @"base.vhdx";
 
         public string[] Patches = new string[] { "default.patch" };

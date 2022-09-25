@@ -107,16 +107,16 @@ namespace RoWMount
         static void Select(string path)
         {
 
-            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
-            info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
-            store = new FileStore(info);
             if (!File.Exists(path))
             {
                 Console.WriteLine("Specified store does not exist, generating template");
                 File.WriteAllText(path, JsonConvert.SerializeObject(new FileStoreInfo(), Formatting.Indented));
                 Console.WriteLine("Run select again to load updated store");
-                return;
             }
+            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
+            info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
+            store = new FileStore(info);
+
         }
         static void Mount(string mountPoint, string guid, bool canWrite)
         {
