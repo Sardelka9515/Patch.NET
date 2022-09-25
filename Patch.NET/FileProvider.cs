@@ -8,28 +8,41 @@ namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
     {
-        public FileInfo FileInfo=new FileInfo(){
-          Attributes=FileAttributes.Normal,
-          CreationTime=DateTime.MinValue,
-          LastAccessTime=DateTime.MinValue,
-          LastWriteTime=DateTime.MinValue, 
-        };
-        Patch Current;
-        List<Patch> Patches = new List<Patch>();
-        Dictionary<int, RoWStream> _streams = new();
-        int _streamHandle = 0;
-        public bool CanWrite => Current.CanWrite;
-        public FileProvider(string baseFile, bool canWrite, params string[] patches) : base(File.OpenRead(baseFile))
+        public FileInfo FileInfo = new FileInfo()
         {
+            Attributes = FileAttributes.Normal,
+            CreationTime = DateTime.MinValue,
+            LastAccessTime = DateTime.MinValue,
+            LastWriteTime = DateTime.MinValue,
+        };
+        public List<Patch> Patches => new(_patches);
+        private Patch Current;
+        private readonly List<Patch> _patches = new();
+        private readonly Dictionary<int, RoWStream> _streams = new();
+        private int _streamHandle = 0;
+        readonly StreamWriter _debug;
+        public readonly string BasePath;
+        public bool CanWrite => Current.CanWrite;
+        public RoWStream[] Streams => _streams.Values.ToArray();
+        public FileProvider(string baseFile, bool canWrite, StreamWriter debugger = null, params string[] patches) : base(File.OpenRead(baseFile))
+        {
+            BasePath = baseFile;
+            _debug = debugger;
+            var parent = new Guid();
             for (int i = 0; i < patches.Length; i++)
             {
                 Console.WriteLine("Reading records from " + patches[i]);
                 var patch = new Patch(patches[i], i == patches.Length - 1 && canWrite);
-                Patches.Add(patch);
+                if (parent != patch.Parent)
+                { 
+                    throw new ArgumentException($"The patch chain is broken at index {i}. Patch parent is {patch.Parent}, expecting {parent}"); 
+                }
+                parent = patch.Guid;
+                _patches.Add(patch);
                 int read = 0;
                 while (patch.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
                 {
-                    // Console.WriteLine($"{type} {vPosOrSize} {chunkLen} {readPos}");
+                    _debug?.WriteLine($"{type} {vPosOrSize} {chunkLen} {readPos}");
                     if (type == RecordType.Write)
                     {
                         MapRecord(vPosOrSize, readPos, chunkLen, patch.Reader.BaseStream, false);
@@ -43,7 +56,24 @@ namespace PatchDotNet
                 }
                 Console.WriteLine("Read " + read + " records");
             }
-            Current = Patches[Patches.Count - 1];
+            Current = _patches[_patches.Count - 1];
+        }
+
+        /// <summary>
+        /// Change current patch and redirect subsequent records to new patch
+        /// </summary>
+        /// <param name="p"></param>
+        public void ChangeCurrent(string path)
+        {
+            lock (this)
+            {
+                if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
+                var p =new Patch(path,true);
+                p.Parent = Current.Guid;
+                _patches.Add(p);
+                Current.Writer.Flush();
+                Current = p;
+            }
         }
         public RoWStream GetStream()
         {
@@ -51,7 +81,7 @@ namespace PatchDotNet
             {
                 var s = new RoWStream(this, _streamHandle);
                 _streams.Add(_streamHandle, s);
-                Console.WriteLine("Stream created " +_streamHandle);
+                Console.WriteLine("Stream created " + _streamHandle);
                 _streamHandle++;
                 return s;
             }
@@ -63,24 +93,25 @@ namespace PatchDotNet
         }
         internal void Write(byte[] buffer, int index, int count)
         {
-            // Console.WriteLine($"Writing data: {Position}, {buffer.Length}, {count}");
+            _debug?.WriteLine($"Writing data: {Position}, {buffer.Length}, {count}");
             if (Position > Length)
             {
                 throw new InvalidOperationException("Cannot write data beyond end of the file");
             }
-            if(count<=0){
+            if (count <= 0)
+            {
                 throw new InvalidOperationException("Byte count to write must be greater than zero");
             }
             MapRecord(Position, Current.Write(Position, buffer, index, count), count, Current.Reader.BaseStream, true);
         }
         internal bool Seek(long pos)
         {
-            // Console.WriteLine($"Seeking position from {Position} to {pos}");
             if (pos > Length)
             {
                 return false;
             }
-            else if (pos == Length)
+            _debug?.WriteLine($"Seeking position from {Position} to {pos}, length: {Length}");
+            if (pos == Length)
             {
                 CurrentFragment = Fragments.Count;
             }
@@ -116,7 +147,8 @@ namespace PatchDotNet
             CheckPosition();
             return true;
         }
-        internal void SetLength(long newLen){
+        internal void SetLength(long newLen)
+        {
             Resize(newLen);
             Current.WriteResize(newLen);
         }
@@ -125,7 +157,7 @@ namespace PatchDotNet
         {
             var current = Length;
             if (current == newLength) { return; }
-            // Console.WriteLine($"============Resizing file from {current} to {newLength}===================");
+            _debug?.WriteLine($"============Resizing file from {current} to {newLength}===================");
             // DumpFragments();
             if (newLength > current)
             {
@@ -145,10 +177,10 @@ namespace PatchDotNet
                     index = ~index;
                     Fragments[index - 1].SetEnd(newLength - 1);
                 }
-                var count=Fragments.Count - index;
+                var count = Fragments.Count - index;
                 Fragments.RemoveRange(index, count);
                 // Console.WriteLine($"Removed {count} frags after eof, remaining: {Fragments.Count}");
-                if(Fragments.Count==0){Fragments.Add(new FileFragement{StartPosition=0,EndPosition=-1,Stream=null});}
+                if (Fragments.Count == 0) { Fragments.Add(new FileFragement { StartPosition = 0, EndPosition = -1, Stream = null }); }
                 if (Position > Length) { Position = Length; CurrentFragment = Fragments.Count - 1; }
             }
 
@@ -162,6 +194,7 @@ namespace PatchDotNet
             CheckPosition();
             while (read < count && (thisRead = Fragments[CurrentFragment].Read(Position, buffer, startIndex + read, count - read)) != 0)
             {
+                // Console.WriteLine($"Read {thisRead} bytes from frag {CurrentFragment}");
                 Position += thisRead;
                 read += thisRead;
 
@@ -190,13 +223,13 @@ namespace PatchDotNet
         }
         public void Check()
         {
-            for(int i = 0;i< Fragments.Count; i++)
+            for (int i = 0; i < Fragments.Count; i++)
             {
                 if (i > 0)
                 {
                     var last = Fragments[i - 1];
                     var frag = Fragments[i];
-                    if (last.EndPosition + 1 != frag.StartPosition) { throw new Exception("Corrupted fragment at: "+i); }
+                    if (last.EndPosition + 1 != frag.StartPosition) { throw new Exception("Corrupted fragment at: " + i); }
                     else if (frag.EndPosition < frag.StartPosition - 1)
                     {
                         throw new Exception("invalid frag");
@@ -216,11 +249,12 @@ namespace PatchDotNet
         }
         public void Flush()
         {
+            _debug?.Flush();
             Current.Writer.Flush();
         }
         public void Dispose()
         {
-            Patches.ForEach(p => p.Dispose());
+            _patches.ForEach(p => p.Dispose());
             lock (_streams)
             {
                 foreach (var s in _streams.Values)
@@ -230,6 +264,7 @@ namespace PatchDotNet
             }
             _baseStream?.Close();
             _baseStream?.Dispose();
+            _debug?.Dispose();
         }
     }
 }

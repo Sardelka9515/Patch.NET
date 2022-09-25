@@ -35,7 +35,7 @@ namespace PatchDotNet
             stream.Position=0;
             using (SHA256 SHA256 = SHA256.Create())
             {
-                return Convert.ToBase64String(SHA256.ComputeHash(stream));
+                return Convert.ToHexString(SHA256.ComputeHash(stream));
             }
         }
         public static void RandLongArray(long[] arr, long min, long max)
@@ -44,6 +44,22 @@ namespace PatchDotNet
             {
                 arr[i] = rand.NextInt64(min, max);
             }
+        }
+        public static string Dump<T>(this IEnumerable<T> ts)
+        {
+            return string.Join(',',ts);
+        }
+        public static void ForEach<T>(this IEnumerable<T> ts,Action<T> a)
+        {
+            foreach(T t in ts)
+            {
+                a(t);
+            }
+        }
+        public static void Parse(this string[] args, string name, Action<string> callback)
+        {
+            var ba = args.Where(x => x.StartsWith(name + "="));
+            if (ba.Any()) { callback(ba.First().Split("=")[1]); }
         }
     }
 }

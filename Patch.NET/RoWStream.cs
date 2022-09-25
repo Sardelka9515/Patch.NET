@@ -55,7 +55,7 @@ namespace PatchDotNet
                 _check();
                 if (value > Length)
                 {
-                    throw new InvalidOperationException("Cannot set position after eof");
+                    throw new InvalidOperationException($"Cannot set position after eof, {value}/{Length}");
                 }
                 _position = value;
             }
@@ -116,6 +116,7 @@ namespace PatchDotNet
             lock(_provider){
                 _provider.Seek(Position);
                 _provider.Write(buffer, offset, count);
+                Position += count;
             }
         }
 

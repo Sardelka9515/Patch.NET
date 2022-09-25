@@ -31,7 +31,7 @@ namespace UnitTests
 
             var hash1=RunTest(basePath, verifyPath, patch1);
             RunTest(basePath, verifyPath, patch1, patch2);
-            var prov=new FileProvider(basePath,false,patch1);
+            var prov=new FileProvider(basePath,false,null,patch1);
             if(hash1!=Util.Hash(prov.GetStream())){
                 throw new Exception("Hash 2 failed");
             }
@@ -42,7 +42,7 @@ namespace UnitTests
         public static string RunTest(string basePath, string verifyPath, params string[] patches)
         {
             Console.WriteLine($"Running test with {patches.Length} snapshots");
-            var prov = new FileProvider(basePath, true, patches);
+            var prov = new FileProvider(basePath, true,null, patches);
             var pStream = prov.GetStream();
             var verify = File.Open(verifyPath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
             Console.WriteLine("Random r/w test");
@@ -136,7 +136,7 @@ namespace UnitTests
             prov.Dispose();
 
 
-            prov = new FileProvider(basePath, true, patches);
+            prov = new FileProvider(basePath, true,null, patches);
             pStream = prov.GetStream();
             verify = File.OpenRead(verifyPath);
 

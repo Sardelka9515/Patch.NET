@@ -42,7 +42,11 @@ namespace PatchDotNet
             {
                 throw new InvalidOperationException($"Cannot read data beyond this fragment: {startPosition} end:{EndPosition}");
             }
-            
+            else if (startPosition < StartPosition)
+            {
+                throw new InvalidOperationException($"Cannot read data before this fragment: {startPosition} start:{StartPosition}");
+            }
+
             // Don't ready beyond this fragment
             if (startPosition + maxCount > EndPosition+1)
             {
@@ -52,7 +56,7 @@ namespace PatchDotNet
             if (Stream == null)
             {
                 // Blank region, possibly a pre-allocated block during resize
-                for (int i = start; i < maxCount; i++)
+                for (int i = start; i < start+maxCount; i++)
                 {
                     buffer[i] = 0;
                 }
@@ -60,8 +64,9 @@ namespace PatchDotNet
             }
             else
             {
-
+                Stream.Flush();
                 Stream.Position = ReadPosition + startPosition - StartPosition;
+                // Console.WriteLine($"Reading: pos:{startPosition}, readPos:{Stream.Position} max:{maxCount}");
                 return Stream.Read(buffer, start, maxCount);
             }
         }

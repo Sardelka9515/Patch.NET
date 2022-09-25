@@ -61,6 +61,7 @@ namespace PatchDotNet
         /// <returns></returns>
         public int MapRecord(long vPos, long readPos, int chunkLen, Stream stream, bool advance)
         {
+            
             if (CurrentFragment > 0 && Fragments[CurrentFragment - 1].TryMerge(vPos, readPos, chunkLen, stream))
             {
                 Position+=chunkLen;
@@ -68,7 +69,7 @@ namespace PatchDotNet
                 CheckPosition();
                 return CurrentFragment - 1;
             }
-
+            
             var newFrag = new FileFragement
             {
                 StartPosition = vPos,
