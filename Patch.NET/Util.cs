@@ -97,6 +97,10 @@ namespace PatchDotNet
         public readonly Dictionary<string, (Action<string[]>, string, string)> Commands = new();
         public void Run(string line)
         {
+            if (line.ToLower() == "help")
+            {
+                Console.WriteLine(GetText());
+            }
             var cs = Util.SplitWithQuotes(line);
             if (Commands.TryGetValue(cs[0].ToLower(), out var tup))
             {

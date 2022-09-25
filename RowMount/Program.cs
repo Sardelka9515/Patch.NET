@@ -22,14 +22,18 @@ namespace RoWMount
             commands.AddCommand("list", cs => ListPatches(cs),
                 "list [parenId]", "list all patches of selected FileStore or chidren of specified patch");
 
-            commands.AddCommand("create", cs => ListPatches(cs),
+            commands.AddCommand("create", cs => CreatePatch(cs),
                 "create path [parentId]", "Create a new patch based on specified parent or base file");
 
             commands.AddCommand("clear", cs => Console.Clear(),
                 "clear", "clear the console buffer");
+            commands.AddCommand("remove", cs => store?.RemovePatch(Guid.Parse(cs[0]), bool.Parse(cs[1]), bool.Parse(cs[2])),
+                "remove patchId deleteChildren deleteFile", "remove the specified patch");
 #if DEBUG
             Select("defaultstore.json");
 #endif
+            Console.WriteLine("Avalible commands:");
+            Console.WriteLine(commands.GetText());
             while (true)
             {
                 try
@@ -43,12 +47,32 @@ namespace RoWMount
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    Console.WriteLine(ex.Message);
                     Console.WriteLine(commands.GetText());
                 }
             }
 
         }
+
+        private static void CreatePatch(string[] cs)
+        {
+            if (store == null)
+            {
+                Console.WriteLine("No FileStore selected");
+                return;
+            }
+            var path = cs[0];
+            var parent = cs.Length > 1 ? cs[1] : null;
+            if (parent != null)
+            {
+                store.CreatePatch(Guid.Parse(parent), path);
+            }
+            else
+            {
+                store.CreatePatch(path);
+            }
+        }
+
         static void ListPatches(string[] _parent)
         {
             if (store == null)

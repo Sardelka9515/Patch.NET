@@ -80,6 +80,23 @@ namespace PatchDotNet
             Patches.Add(patch.Guid, patch);
             Reflect();
         }
+
+        /// <summary>
+        /// Create new patch from base file
+        /// </summary>
+        /// <param name="path"></param>
+        /// <exception cref="InvalidOperationException"></exception>
+        public void CreatePatch(string path)
+        {
+            if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
+            var patch = new Patch(path, true);
+            patch.Parent = Guid.Empty;
+            patch.Dispose();
+
+            patch = new Patch(path, false);
+            Patches.Add(patch.Guid, patch);
+            Reflect();
+        }
         public void RemovePatch(Guid id, bool deleteFile = false, bool deleteChidren = false)
         {
             var p = Patches[id];
