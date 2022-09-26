@@ -57,6 +57,7 @@ namespace PatchDotNet
         private long _lastVirtualPosition = -1;
         private int _lastChunkSize;
         private bool _lastResize = false;
+        public FileInfo MetaData;
         public Patch(string path, bool canWrite)
         {
             _stream = new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, canWrite ? FileShare.Read : FileShare.ReadWrite);
@@ -82,15 +83,16 @@ namespace PatchDotNet
                 }
             }
             _stream.Position = 4096;
+            MetaData = new(this);
         }
-        void SetHeader(long offset, byte[] data)
+        internal void SetHeader(long offset, byte[] data)
         {
             var pos = _stream.Position;
             _stream.Seek(offset, SeekOrigin.Begin);
             _stream.Write(data, 0, data.Length);
             _stream.Position = pos;
         }
-        byte[] GetHeader(long offset, int count)
+        internal byte[] GetHeader(long offset, int count)
         {
             var pos = _stream.Position;
             _stream.Seek(offset, SeekOrigin.Begin);

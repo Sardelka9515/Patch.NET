@@ -8,13 +8,7 @@ namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
     {
-        public FileInfo FileInfo => new FileInfo()
-        {
-            Attributes = CanWrite ? FileAttributes.Normal : FileAttributes.ReadOnly,
-            CreationTime = DateTime.MinValue,
-            LastAccessTime = DateTime.MinValue,
-            LastWriteTime = DateTime.MinValue,
-        };
+        public FileInfo FileInfo => Current.MetaData;
         public List<Patch> Patches => new(_patches);
         private Patch Current;
         private readonly List<Patch> _patches = new();

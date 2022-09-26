@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
 
 namespace PatchDotNet
 {
@@ -76,6 +77,14 @@ namespace PatchDotNet
                 }
             }
             return result;
+        }
+        public static byte[] ToBytes(this DateTime dt)
+        {
+            return BitConverter.GetBytes(dt.ToBinary());
+        }
+        public static DateTime GetDateTime(this byte[] bs)
+        {
+            return new(BitConverter.ToInt64(bs));
         }
         public static string FormatSize(double len)
         {
