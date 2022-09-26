@@ -15,10 +15,10 @@ namespace PatchDotNet
         public FileStore(FileStoreInfo info)
         {
             _info = info;
-            BaseFile = info.BaseFile;
+            BaseFile = info.ToAbsolute(info.BaseFile);
             foreach (var p in info.Patches)
             {
-                var patch = new Patch(p, false);
+                var patch = new Patch(_info.ToAbsolute(p), false);
                 Patches.Add(patch.Guid, patch);
             }
         }
@@ -131,7 +131,7 @@ namespace PatchDotNet
         }
         void Reflect()
         {
-            _info.Patches = Patches.Select(x => Path.GetRelativePath(Directory.GetCurrentDirectory(), x.Value.Path)).ToArray();
+            _info.Patches = Patches.Select(x => Path.GetRelativePath(_info.BaseDirectory, x.Value.Path)).ToArray();
             _info.Save?.Invoke(_info);
         }
 
@@ -145,16 +145,25 @@ namespace PatchDotNet
     {
         public static FileStoreInfo FromJson(string path)
         {
+            FileStoreInfo info;
             if (!File.Exists(path))
             {
                 Console.WriteLine("Specified store does not exist, generating template");
-                File.WriteAllText(path, JsonConvert.SerializeObject(new FileStoreInfo(), Formatting.Indented));
+                info = new FileStoreInfo();
             }
-            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
+            info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
+            info.BaseDirectory ??= Directory.GetParent(path).FullName;
             info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
+            info.Save(info);
             return info;
         }
+        public string BaseDirectory;
         public string BaseFile = @"base.vhdx";
+        public string ToAbsolute(string path)
+        {
+            if (Path.IsPathRooted(path)) { return path; }
+            return Path.Combine(BaseDirectory, path);
+        }
 
         public string[] Patches = new string[] { "default.patch" };
         [JsonIgnore]

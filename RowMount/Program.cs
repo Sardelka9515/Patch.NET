@@ -30,7 +30,7 @@ namespace RoWMount
             commands.AddCommand("remove", cs => store?.RemovePatch(Guid.Parse(cs[0]), bool.Parse(cs[1]), bool.Parse(cs[2])),
                 "remove patchId deleteChildren deleteFile", "remove the specified patch");
 #if DEBUG
-            Select("defaultstore.json");
+            Select("test\\defaultstore.json");
 #endif
             Console.WriteLine("Avalible commands:");
             Console.WriteLine(commands.GetText());
@@ -99,23 +99,14 @@ namespace RoWMount
                 Console.WriteLine("========================================================================");
                 Console.WriteLine("{0,-20} {1,-50}", "Guid:", patch.Key);
                 Console.WriteLine("{0,-20} {1,-50}", "Parent:", patch.Value.Parent);
-                Console.WriteLine("{0,-20} {1,-50}", "Path:", patch.Value.Path);
+                Console.WriteLine("{0,-20} {1,-50}", "Full path:", patch.Value.Path);
                 Console.WriteLine("{0,-20} {1,-50}", "Size:", Util.FormatSize(patch.Value.Reader.BaseStream.Length));
                 Console.WriteLine("{0,-20} {1,-50}", "Defragmented:", patch.Value.LastDefragmented);
             }
         }
         static void Select(string path)
         {
-
-            if (!File.Exists(path))
-            {
-                Console.WriteLine("Specified store does not exist, generating template");
-                File.WriteAllText(path, JsonConvert.SerializeObject(new FileStoreInfo(), Formatting.Indented));
-                Console.WriteLine("Run select again to load updated store");
-            }
-            var info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
-            info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
-            store = new FileStore(info);
+            store = new FileStore(FileStoreInfo.FromJson(path));
 
         }
         static void Mount(string mountPoint, string guid, bool canWrite)

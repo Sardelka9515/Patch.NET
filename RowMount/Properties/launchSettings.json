@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "RowMount": {
-      "commandName": "Project",
-      "workingDirectory": "M:\\SandBox-Shared\\repos\\Sardelka9515\\Patch.NET\\bin\\test"
-    }
-  }
-}
