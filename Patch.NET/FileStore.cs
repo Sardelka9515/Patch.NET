@@ -66,15 +66,16 @@ namespace PatchDotNet
         /// <summary>
         /// Create a child patch of specified parent
         /// </summary>
-        /// <param name="parent"></param>
+        /// <param name="parentId"></param>
         /// <param name="path"></param>
-        public void CreatePatch(Guid parent, string path)
+        public void CreatePatch(Guid parentId, string path)
         {
             if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
-            if (!Patches.ContainsKey(parent)) { throw new KeyNotFoundException("Specified parent does not exist: " + parent); }
+            if (!Patches.TryGetValue(parentId, out var parent)) { throw new KeyNotFoundException("Specified parent does not exist: " + parentId); }
 
             var patch = new Patch(path, true);
-            patch.Parent = parent;
+            patch.Attributes = parent.Attributes;
+            patch.Parent = parentId;
             patch.Dispose();
 
             patch = new Patch(path, false);
@@ -92,6 +93,7 @@ namespace PatchDotNet
             if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
             var patch = new Patch(path, true);
             patch.Parent = Guid.Empty;
+            patch.Attributes = new FileInfo(BaseFile).Attributes;
             patch.Dispose();
 
             patch = new Patch(path, false);

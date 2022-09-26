@@ -47,17 +47,27 @@ namespace PatchDotNet
             get => DateTime.FromBinary(BitConverter.ToInt64(GetHeader(36, 8)));
             set => SetHeader(36, BitConverter.GetBytes(value.ToBinary()));
         }
+
+        [HeaderOffset(44)]
+        public FileAttributes Attributes
+        {
+            get => (FileAttributes)BitConverter.ToInt32(GetHeader(44, 4)) | (CanWrite ? 0 : FileAttributes.ReadOnly);
+            set => SetHeader(44, BitConverter.GetBytes((int)value));
+        }
         #endregion
 
         public string Path => _stream.Name;
         public bool CanWrite => Writer != null;
+        public DateTime CreationTime=>_info.CreationTime;
+        public DateTime LastAccessTime => _info.LastAccessTime;
+        public DateTime LastWriteTime => _info.LastWriteTime;
         private readonly FileStream _stream;
         public readonly BinaryReader Reader;
         public readonly BinaryWriter Writer;
         private long _lastVirtualPosition = -1;
         private int _lastChunkSize;
         private bool _lastResize = false;
-        public FileInfo MetaData;
+        private readonly FileInfo _info;
         public Patch(string path, bool canWrite)
         {
             _stream = new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, canWrite ? FileShare.Read : FileShare.ReadWrite);
@@ -67,6 +77,10 @@ namespace PatchDotNet
             // Initialize file
             if (_stream.Length == 0)
             {
+                if (!canWrite)
+                {
+                    throw new FileNotFoundException("Specified patch was not found.");
+                }
                 // offset 0
                 Writer.Write(Generation);
                 Guid = Guid.NewGuid();
@@ -83,7 +97,7 @@ namespace PatchDotNet
                 }
             }
             _stream.Position = 4096;
-            MetaData = new(this);
+            _info = new(path);
         }
         internal void SetHeader(long offset, byte[] data)
         {

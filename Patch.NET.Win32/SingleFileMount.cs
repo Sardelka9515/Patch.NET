@@ -66,11 +66,7 @@ namespace PatchDotNet.Win32
             streams = new FileInformation[0];
             return DokanResult.NotImplemented;
         }
-        public NtStatus SetFileAttributes(string fileName, FileAttributes attributes, IDokanFileInfo info)
-        {
-            return DokanResult.NotImplemented;
-
-        }
+        
 
         public NtStatus SetFileTime(string fileName, DateTime? creationTime, DateTime? lastAccessTime,
             DateTime? lastWriteTime, IDokanFileInfo info)
@@ -411,17 +407,26 @@ namespace PatchDotNet.Win32
         }
         public NtStatus GetFileInformation(string fileName, out FileInformation fileInfo, IDokanFileInfo info)
         {
-            var finfo = _provider.FileInfo;
             fileInfo = new FileInformation
             {
                 FileName = fileName,
-                Attributes = finfo.Attributes,
-                CreationTime = finfo.CreationTime,
-                LastAccessTime = finfo.LastAccessTime,
-                LastWriteTime = finfo.LastWriteTime,
+                Attributes = _provider.Attributes,
+                CreationTime = _provider.CreationTime,
+                LastAccessTime = _provider.LastAccessTime,
+                LastWriteTime = _provider.LastWriteTime,
                 Length = _provider.Length,
             };
             return Trace(nameof(GetFileInformation), fileName, info, DokanResult.Success);
+        }
+        public NtStatus SetFileAttributes(string fileName, FileAttributes attributes, IDokanFileInfo info)
+        {
+            if (_path == fileName && _provider.CanWrite)
+            {
+                _provider.Attributes = attributes;
+                return DokanResult.Success;
+            }
+            return DokanResult.AccessDenied;
+
         }
         public NtStatus DeleteDirectory(string fileName, IDokanFileInfo info)
         {
@@ -505,13 +510,12 @@ namespace PatchDotNet.Win32
             {
                 return Trace(nameof(FindFiles), fileName, info, DokanResult.PathNotFound);
             }
-            var finfo = _provider.FileInfo;
             files = new List<FileInformation>(){
                 new FileInformation{
-                    Attributes = finfo.Attributes,
-                    CreationTime = finfo.CreationTime,
-                    LastAccessTime = finfo.LastAccessTime,
-                    LastWriteTime = finfo.LastWriteTime,
+                    Attributes = _provider.Attributes,
+                    CreationTime = _provider.CreationTime,
+                    LastAccessTime = _provider.LastAccessTime,
+                    LastWriteTime = _provider.LastWriteTime,
                     FileName = Path.GetFileName(_path),
                     Length=_provider.Length
                 }

@@ -8,7 +8,14 @@ namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
     {
-        public FileInfo FileInfo => Current.MetaData;
+        public FileAttributes Attributes
+        {
+            get => Current.Attributes;
+            set=> Current.Attributes = value;
+        }
+        public readonly DateTime CreationTime;
+        public DateTime LastAccessTime => Current.LastAccessTime;
+        public DateTime LastWriteTime => Current.LastWriteTime;
         public List<Patch> Patches => new(_patches);
         private Patch Current;
         private readonly List<Patch> _patches = new();
@@ -20,7 +27,9 @@ namespace PatchDotNet
         public RoWStream[] Streams => _streams.Values.ToArray();
         public FileProvider(string baseFile, bool canWrite, StreamWriter debugger = null, params string[] patches) : base(File.OpenRead(baseFile))
         {
+            if (patches.Length == 0) { throw new InvalidOperationException("One or more patches must be specified"); }
             BasePath = baseFile;
+            CreationTime = new FileInfo(baseFile).CreationTime;
             _debug = debugger;
             var parent = new Guid();
             for (int i = 0; i < patches.Length; i++)
@@ -65,6 +74,7 @@ namespace PatchDotNet
                 if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
                 var p = new Patch(path, true);
                 p.Parent = Current.Guid;
+                p.Attributes = Attributes;
                 _patches.Add(p);
                 Current.Writer.Flush();
                 Current = p;
