@@ -10,4 +10,9 @@
     <PackageReference Include="Terminal.Gui" Version="1.8.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Patch.NET.Win32\Patch.NET.Win32.csproj" />
+    <ProjectReference Include="..\Patch.NET\Patch.NET.csproj" />
+  </ItemGroup>
+
 </Project>

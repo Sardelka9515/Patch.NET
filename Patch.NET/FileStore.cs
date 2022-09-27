@@ -7,19 +7,39 @@ using Newtonsoft.Json;
 
 namespace PatchDotNet
 {
-    public class FileStore : IDisposable
+    public class FileStore
     {
+        public string Name { get; set; }
         public readonly string BaseFile;
-        public readonly Dictionary<Guid, Patch> Patches = new();
+        public readonly PatchNode Root;
+        public readonly Dictionary<Guid, PatchNode> Patches = new();
         readonly FileStoreInfo _info;
         public FileStore(FileStoreInfo info)
         {
             _info = info;
             BaseFile = info.ToAbsolute(info.BaseFile);
+            Name=_info.Name;
+            Root = new PatchNode()
+            {
+                ID = Guid.Empty,
+                Parent = null,
+                Name = "Base",
+                Path = BaseFile
+            };
+            Patches.Add(Root.ID, Root);
             foreach (var p in info.Patches)
             {
-                var patch = new Patch(_info.ToAbsolute(p), false);
-                Patches.Add(patch.Guid, patch);
+                var pa = new PatchNode(_info.ToAbsolute(p));
+                Patches.Add(pa.ID, pa);
+            }
+
+            // Build tree
+            foreach (var p in Patches.Values)
+            {
+                if (p == Root) { continue; }
+                var parent = Patches[p.ParentID];
+                p.Parent = parent;
+                parent.Children.Add(p);
             }
         }
         public FileProvider GetProvider(Guid patchId, bool canWrite)
@@ -29,14 +49,14 @@ namespace PatchDotNet
                 patchId = Patches.First().Key;
             }
 
-            List<Patch> chain = new() { Patches[patchId] };
+            List<PatchNode> chain = new() { Patches[patchId] };
 
             // Build patch chain
-            while (chain[0].Parent != Guid.Empty)
+            while (chain[0].Parent != Root)
             {
-                chain.Insert(0, Patches[chain[0].Parent]);
+                chain.Insert(0, chain[0].Parent);
             }
-            if (canWrite && Patches.Where(x => x.Value.Parent == patchId).Any())
+            if (canWrite && chain[^1].Children.Count > 0)
             {
                 throw new InvalidOperationException("Cannot open this patch as r/w because one or more patches depend on it");
             }
@@ -57,14 +77,14 @@ namespace PatchDotNet
             {
                 throw new InvalidOperationException($"Provider does not belong to this {nameof(FileStore)}");
             }
-            provider.ChangeCurrent(path);
-            var patch = new Patch(path, false);
-            Patches.Add(patch.Guid, patch);
+
+            var node = new PatchNode(path);
+            Patches.Add(node.ID, node);
             Reflect();
         }
 
         /// <summary>
-        /// Create a child patch of specified parent
+        /// Create a child patch from specified parent
         /// </summary>
         /// <param name="parentId"></param>
         /// <param name="path"></param>
@@ -72,14 +92,14 @@ namespace PatchDotNet
         {
             if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
             if (!Patches.TryGetValue(parentId, out var parent)) { throw new KeyNotFoundException("Specified parent does not exist: " + parentId); }
-
+            parent.Update();
             var patch = new Patch(path, true);
             patch.Attributes = parent.Attributes;
             patch.Parent = parentId;
             patch.Dispose();
 
-            patch = new Patch(path, false);
-            Patches.Add(patch.Guid, patch);
+            var node = new PatchNode(path);
+            Patches.Add(node.ID, node);
             Reflect();
         }
 
@@ -91,55 +111,41 @@ namespace PatchDotNet
         public void CreatePatch(string path)
         {
             if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
-            var patch = new Patch(path, true);
-            patch.Parent = Guid.Empty;
-            patch.Attributes = new FileInfo(BaseFile).Attributes;
+            var patch = new Patch(path, true)
+            {
+                Parent = Guid.Empty,
+                Attributes = new FileInfo(BaseFile).Attributes
+            };
             patch.Dispose();
 
-            patch = new Patch(path, false);
-            Patches.Add(patch.Guid, patch);
+            var node = new PatchNode(path);
+            Patches.Add(node.ID, node);
             Reflect();
         }
         public void RemovePatch(Guid id, bool deleteFile = false, bool deleteChidren = false)
         {
             var p = Patches[id];
-            var chidren = Patches.Where(x => x.Value.Parent == id);
+            var chidren = p.Children;
             if (chidren.Any())
             {
                 if (!deleteChidren) { throw new InvalidOperationException("Cannot delete this patch because one or more patches depend on it."); }
-                chidren.ForEach(x => RemovePatch(x.Key, deleteFile, true));
+                chidren.ForEach(x => RemovePatch(x.ID, deleteFile, true));
             }
             Console.WriteLine("Removing patch: " + p.Path);
-            var path = p.Path;
-            p.Dispose();
             if (deleteFile)
             {
-                try
-                {
-
-                    File.Delete(path);
-                }
-                catch
-                {
-                    // Delete failed, reopen patch
-                    p = Patches[id] = new Patch(path, false);
-                    throw;
-                }
+                File.Delete(p.Path);
             }
             Patches.Remove(id);
             Reflect();
         }
         void Reflect()
         {
+            _info.Name = Name;
             _info.Patches = Patches.Select(x => Path.GetRelativePath(_info.BaseDirectory, x.Value.Path)).ToArray();
             _info.Save?.Invoke(_info);
         }
 
-        public void Dispose()
-        {
-            Patches.ForEach(x => x.Value.Dispose());
-            Patches.Clear();
-        }
     }
     public class FileStoreInfo
     {
@@ -153,10 +159,12 @@ namespace PatchDotNet
             }
             info = JsonConvert.DeserializeObject<FileStoreInfo>(File.ReadAllText(path));
             info.BaseDirectory ??= Directory.GetParent(path).FullName;
+            info.Name ??= Path.GetFileNameWithoutExtension(path);
             info.Save = (x) => File.WriteAllText(path, JsonConvert.SerializeObject(x, Formatting.Indented));
             info.Save(info);
             return info;
         }
+        public string Name;
         public string BaseDirectory;
         public string BaseFile = @"base.vhdx";
         public string ToAbsolute(string path)

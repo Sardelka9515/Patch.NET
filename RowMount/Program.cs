@@ -45,10 +45,16 @@ namespace RoWMount
                     }
                     commands.Run(line);
                 }
-                catch (Exception ex)
+                catch (IndexOutOfRangeException)
                 {
-                    Console.WriteLine(ex.Message);
                     Console.WriteLine(commands.GetText());
+                }
+                catch( Exception ex)
+                {
+                    Console.WriteLine(ex);
+#if DEBUG
+                    throw;
+#endif
                 }
             }
 
@@ -88,20 +94,24 @@ namespace RoWMount
                     Console.WriteLine("Specified patch was not found");
                     return;
                 }
-                Show(new(Guid.Parse(parent), pp));
+                Show(pp);
             }
-            foreach (var p in parent == null ? store.Patches : store.Patches.Where(x => x.Value.Parent.ToString() == parent))
+            foreach (var p in parent == null ? store.Patches.Values.ToList() : store.Patches[Guid.Parse(parent)].Children)
             {
+                if (p.ID == Guid.Empty) { continue; }
                 Show(p);
             }
-            void Show(KeyValuePair<Guid,Patch> patch)
+            void Show(PatchNode node)
             {
-                Console.WriteLine("========================================================================");
-                Console.WriteLine("{0,-20} {1,-50}", "Guid:", patch.Key);
-                Console.WriteLine("{0,-20} {1,-50}", "Parent:", patch.Value.Parent);
-                Console.WriteLine("{0,-20} {1,-50}", "Full path:", patch.Value.Path);
-                Console.WriteLine("{0,-20} {1,-50}", "Size:", Util.FormatSize(patch.Value.Reader.BaseStream.Length));
-                Console.WriteLine("{0,-20} {1,-50}", "Defragmented:", patch.Value.LastDefragmented);
+                Console.WriteLine(new String('=',Console.WindowWidth));
+                var patch = new Patch(node.Path,false);
+                Console.WriteLine("{0,-20} {1,-50}", "Name:", patch.Name);
+                Console.WriteLine("{0,-20} {1,-50}", "Guid:", patch.Guid);
+                Console.WriteLine("{0,-20} {1,-50}", "Parent:", patch.Parent);
+                Console.WriteLine("{0,-20} {1,-50}", "Full path:", patch.Path);
+                Console.WriteLine("{0,-20} {1,-50}", "Size:", Util.FormatSize(patch.Reader.BaseStream.Length));
+                Console.WriteLine("{0,-20} {1,-50}", "Defragmented:", patch.LastDefragmented);
+                patch.Dispose();
             }
         }
         static void Select(string path)

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace PatchDotNet
 {
@@ -54,11 +55,18 @@ namespace PatchDotNet
             get => (FileAttributes)BitConverter.ToInt32(GetHeader(44, 4)) | (CanWrite ? 0 : FileAttributes.ReadOnly);
             set => SetHeader(44, BitConverter.GetBytes((int)value));
         }
+
+        [HeaderOffset(1024)]
+        public string Name
+        {
+            get => GetHeaderString(1024);
+            set => SetHeader(1024, value);
+        }
         #endregion
 
         public string Path => _stream.Name;
         public bool CanWrite => Writer != null;
-        public DateTime CreationTime=>_info.CreationTime;
+        public DateTime CreationTime => _info.CreationTime;
         public DateTime LastAccessTime => _info.LastAccessTime;
         public DateTime LastWriteTime => _info.LastWriteTime;
         private readonly FileStream _stream;
@@ -71,7 +79,7 @@ namespace PatchDotNet
         public Patch(string path, bool canWrite)
         {
             _stream = new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, canWrite ? FileShare.Read : FileShare.ReadWrite);
-            _stream.Seek(0, SeekOrigin.Begin);
+            _stream.Position=0;
             Reader = new BinaryReader(_stream);
             Writer = canWrite ? new BinaryWriter(_stream) : null;
             // Initialize file
@@ -106,11 +114,33 @@ namespace PatchDotNet
             _stream.Write(data, 0, data.Length);
             _stream.Position = pos;
         }
+        internal void SetHeader(long offset, string s, int maxBytes = 256)
+        {
+            var pos = _stream.Position;
+            maxBytes -= sizeof(int);
+            _stream.Seek(offset, SeekOrigin.Begin);
+            var bytes = Encoding.UTF8.GetBytes(s);
+            if (bytes.Length > maxBytes)
+            {
+                throw new InvalidDataException($"String too large, must be less than {maxBytes} bytes.");
+            }
+            Writer.Write(bytes.Length);
+            Writer.Write(bytes);
+            _stream.Position = pos;
+        }
         internal byte[] GetHeader(long offset, int count)
         {
             var pos = _stream.Position;
             _stream.Seek(offset, SeekOrigin.Begin);
             var data = Reader.ReadBytes(count);
+            _stream.Position = pos;
+            return data;
+        }
+        internal string GetHeaderString(long offset)
+        {
+            var pos = _stream.Position;
+            _stream.Seek(offset, SeekOrigin.Begin);
+            var data = Encoding.UTF8.GetString(Reader.ReadBytes(Reader.ReadInt32()));
             _stream.Position = pos;
             return data;
         }
@@ -241,6 +271,41 @@ namespace PatchDotNet
         {
             _stream.Close();
             _stream.Dispose();
+        }
+    }
+
+
+    public class PatchNode
+    {
+        public Guid ID;
+        public string Name;
+        public string Path;
+        public PatchNode Parent;
+        public Guid ParentID;
+        public List<PatchNode> Children = new();
+        public FileAttributes Attributes;
+        public PatchNode(string path)
+        {
+            Path = path;
+            Update();
+        }
+        public PatchNode() { }
+        public void Update(bool dispose=true)
+        {
+            var p = new Patch(Path, false);
+            ID = p.Guid;
+            Path = p.Path;
+            Name = p.Name;
+            ParentID = p.Parent;
+            Attributes= p.Attributes;
+            if (dispose)
+            {
+                p.Dispose();
+            }
+        }
+        public static implicit operator Guid(PatchNode node)
+        {
+            return node.ID;
         }
     }
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
