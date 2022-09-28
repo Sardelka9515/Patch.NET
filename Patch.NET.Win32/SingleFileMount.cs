@@ -268,91 +268,100 @@ namespace PatchDotNet.Win32
 
         public void CloseFile(string fileName, IDokanFileInfo info)
         {
+            lock (_provider)
+            {
+
 #if TRACE
-            if (info.Context != null)
-                Console.WriteLine(DokanFormat($"{nameof(CloseFile)}('{fileName}', {info} - entering"));
+                if (info.Context != null)
+                    Console.WriteLine(DokanFormat($"{nameof(CloseFile)}('{fileName}', {info} - entering"));
 #endif
 
-            (info.Context as RoWStream)?.Dispose();
-            info.Context = null;
-            Trace(nameof(CloseFile), fileName, info, DokanResult.Success);
-            // could recreate cleanup code here but this is not called sometimes
+                (info.Context as RoWStream)?.Dispose();
+                info.Context = null;
+                Trace(nameof(CloseFile), fileName, info, DokanResult.Success);
+                // could recreate cleanup code here but this is not called sometimes
+            }
         }
 
 
         public void Cleanup(string fileName, IDokanFileInfo info)
         {
-#if TRACE
-            if (info.Context != null)
-                Console.WriteLine(DokanFormat($"{nameof(Cleanup)}('{fileName}', {info} - entering"));
-#endif
-
-            (info.Context as RoWStream)?.Dispose();
-            info.Context = null;
-
-            if (info.DeleteOnClose)
-            {
-                Trace(nameof(Cleanup), fileName, info, DokanResult.NotImplemented);
-                return;
-            }
-            Trace(nameof(Cleanup), fileName, info, DokanResult.Success);
-        }
-        public NtStatus ReadFile(string fileName, byte[] buffer, out int bytesRead, long offset, IDokanFileInfo info)
-        {
             lock (_provider)
             {
 
-                // Console.ForegroundColor = ConsoleColor.Green;
-                // Console.WriteLine($"[Dokan] Reading {fileName}, {offset}, {buffer.Length}");
-                if (fileName != _path)
+#if TRACE
+                if (info.Context != null)
+                    Console.WriteLine(DokanFormat($"{nameof(Cleanup)}('{fileName}', {info} - entering"));
+#endif
+
+                (info.Context as RoWStream)?.Dispose();
+                info.Context = null;
+
+                if (info.DeleteOnClose)
                 {
-                    bytesRead = 0;
-                    return Trace(nameof(ReadFile), fileName, info, DokanResult.AccessDenied);
+                    Trace(nameof(Cleanup), fileName, info, DokanResult.NotImplemented);
+                    return;
                 }
-                if (info.Context == null) // memory mapped read
-                {
-                    using (var stream = _provider.GetStream())
-                    {
-                        stream.Position = offset;
-                        bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    }
-                }
-                else // normal read
-                {
-                    var stream = info.Context as RoWStream;
-                    lock (stream) //Protect from overlapped read
-                    {
-                        stream.Position = offset;
-                        bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    }
-                }
-                return Trace(nameof(ReadFile), fileName, info, DokanResult.Success, "out " + bytesRead.ToString(),
-                    offset.ToString());
+                Trace(nameof(Cleanup), fileName, info, DokanResult.Success);
             }
+        }
+        public NtStatus ReadFile(string fileName, byte[] buffer, out int bytesRead, long offset, IDokanFileInfo info)
+        {
+
+            // Console.ForegroundColor = ConsoleColor.Green;
+            // Console.WriteLine($"[Dokan] Reading {fileName}, {offset}, {buffer.Length}");
+            if (fileName != _path)
+            {
+                bytesRead = 0;
+                return Trace(nameof(ReadFile), fileName, info, DokanResult.AccessDenied);
+            }
+            if (info.Context == null) // memory mapped read
+            {
+                using (var stream = _provider.GetStream())
+                {
+                    lock (stream)
+                    {
+                        stream.Position = offset;
+                        bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    }
+                }
+            }
+            else // normal read
+            {
+                var stream = info.Context as RoWStream;
+                lock (stream) //Protect from overlapped read
+                {
+                    stream.Position = offset;
+                    bytesRead = stream.Read(buffer, 0, buffer.Length);
+                }
+            }
+            return Trace(nameof(ReadFile), fileName, info, DokanResult.Success, "out " + bytesRead.ToString(),
+                offset.ToString());
         }
 
         public NtStatus WriteFile(string fileName, byte[] buffer, out int bytesWritten, long offset, IDokanFileInfo info)
         {
-            lock (_provider)
+            if (!_provider.CanWrite)
             {
-                if (!_provider.CanWrite)
+                bytesWritten = 0;
+                return Trace(nameof(WriteFile), fileName, info, DokanResult.AccessDenied, "out " + bytesWritten.ToString(),
+                offset.ToString());
+            }
+            // Console.ForegroundColor = ConsoleColor.Yellow;
+            // Console.WriteLine($"[Dokan] Writing {fileName}, {offset}, {buffer.Length}");
+            if (fileName != _path)
+            {
+                bytesWritten = 0;
+                return Trace(nameof(Cleanup), fileName, info, DokanResult.AccessDenied);
+            }
+            var append = offset == -1;
+            if (info.Context == null)
+            {
+                using (var stream = info.Context as RoWStream ?? _provider.GetStream())
                 {
-                    bytesWritten = 0;
-                    return Trace(nameof(WriteFile), fileName, info, DokanResult.AccessDenied, "out " + bytesWritten.ToString(),
-                    offset.ToString());
-                }
-                // Console.ForegroundColor = ConsoleColor.Yellow;
-                // Console.WriteLine($"[Dokan] Writing {fileName}, {offset}, {buffer.Length}");
-                if (fileName != _path)
-                {
-                    bytesWritten = 0;
-                    return Trace(nameof(Cleanup), fileName, info, DokanResult.AccessDenied);
-                }
-                var append = offset == -1;
-                if (info.Context == null)
-                {
-                    using (var stream = info.Context as RoWStream ?? _provider.GetStream())
+                    lock (stream)
                     {
+
                         if (!append) // Offset of -1 is an APPEND: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
                         {
                             stream.Position = offset;
@@ -365,9 +374,13 @@ namespace PatchDotNet.Win32
                         bytesWritten = buffer.Length;
                     }
                 }
-                else
+            }
+            else
+            {
+                var stream = info.Context as RoWStream;
+                lock (stream)
                 {
-                    var stream = info.Context as RoWStream;
+
                     if (append)
                     {
                         if (stream.CanSeek)
@@ -386,11 +399,11 @@ namespace PatchDotNet.Win32
                         stream.Position = offset;
                     }
                     stream.Write(buffer, 0, buffer.Length);
-                    bytesWritten = buffer.Length;
                 }
-                return Trace(nameof(WriteFile), fileName, info, DokanResult.Success, "out " + bytesWritten.ToString(),
-                    offset.ToString());
+                bytesWritten = buffer.Length;
             }
+            return Trace(nameof(WriteFile), fileName, info, DokanResult.Success, "out " + bytesWritten.ToString(),
+                offset.ToString());
         }
 
         public NtStatus FlushFileBuffers(string fileName, IDokanFileInfo info)

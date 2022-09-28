@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
 using System.Runtime.CompilerServices;
+using Newtonsoft.Json;
 
 namespace PatchDotNet
 {
@@ -99,6 +100,27 @@ namespace PatchDotNet
             // Adjust the format string to your preferences. For example "{0:0.#}{1}" would
             // show a single decimal place, and no space.
             return string.Format("{0:0.##} {1}", len, sizes[order]);
+        }
+        public static T ReadJson<T>(string path) where T: new()
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<T>(File.ReadAllText(path));
+            }
+            catch(FileNotFoundException)
+            {
+                var t = new T();
+                WriteJson(t, path);
+                return t;
+            }
+        }
+        public static string JoinLines<T>(this IEnumerable<T> lines)
+        {
+            return string.Join(Environment.NewLine, lines);
+        }
+        public static void WriteJson<T>(T obj,string path)
+        {
+            File.WriteAllText(path,JsonConvert.SerializeObject(obj));
         }
     }
     public class ConsoleCommand

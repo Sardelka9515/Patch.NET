@@ -179,6 +179,7 @@ namespace RoWMount
                 }
             }
         stop:
+            dokanInstance.Dispose();
             provider.Dispose();
             Console.WriteLine("File closed");
         }

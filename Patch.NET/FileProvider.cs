@@ -8,10 +8,11 @@ namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
     {
+        public Guid CurrentGuid => Current.Guid;
         public FileAttributes Attributes
         {
-            get => Current.Attributes;
-            set=> Current.Attributes = value;
+            get => Current.Attributes | (CanWrite ? 0 : FileAttributes.ReadOnly);
+            set => Current.Attributes = value;
         }
         public readonly DateTime CreationTime;
         public DateTime LastAccessTime => Current.LastAccessTime;
@@ -31,21 +32,21 @@ namespace PatchDotNet
             BasePath = baseFile;
             CreationTime = new FileInfo(baseFile).CreationTime;
             _debug = debugger;
-            var parent = new Guid();
+            Patch parent = null;
             for (int i = 0; i < patches.Length; i++)
             {
-                Console.WriteLine("Reading records from " + patches[i]);
+                // Console.WriteLine("Reading records from " + patches[i]);
                 var patch = new Patch(patches[i], i == patches.Length - 1 && canWrite);
-                if (parent != patch.Parent)
+                if (parent != patch.Parent || patch.ParentLength != (parent?.Length ?? _baseStream.Length))
                 {
-                    throw new ArgumentException($"The patch chain is broken at index {i}. Patch parent is {patch.Parent}, expecting {parent}");
+                    throw new ArgumentException($"The patch chain is broken at index {i}. Actual parent is {(Guid)parent}=>{parent?.Length ?? _baseStream.Length}, expecting {patch.Parent}=>{patch.ParentLength}");
                 }
-                parent = patch.Guid;
                 _patches.Add(patch);
+                parent = patch;
                 int read = 0;
                 while (patch.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
                 {
-                    _debug?.WriteLine($"{type} {vPosOrSize} {chunkLen} {readPos}");
+                    Console.WriteLine($"{read} {type} {vPosOrSize} {chunkLen} {readPos}");
                     if (type == RecordType.Write)
                     {
                         MapRecord(vPosOrSize, readPos, chunkLen, patch.Reader.BaseStream, false);
@@ -66,15 +67,13 @@ namespace PatchDotNet
         /// Change current patch and redirect subsequent records to new patch
         /// </summary>
         /// <param name="p"></param>
-        public void ChangeCurrent(string path)
+        public void ChangeCurrent(string path, string name)
         {
             lock (this)
             {
-                Flush();
-                if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
+                Flush(); 
+                Current.CreateChildren(path, name);
                 var p = new Patch(path, true);
-                p.Parent = Current.Guid;
-                p.Attributes = Attributes;
                 _patches.Add(p);
                 Current.Writer.Flush();
                 Current = p;

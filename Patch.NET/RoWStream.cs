@@ -38,32 +38,48 @@ namespace PatchDotNet
         {
             get
             {
-                _check();
-                return _provider.Length;
+                lock (_provider)
+                {
+
+                    _check();
+                    return _provider.Length;
+                }
             }
         }
         public override long Position
         {
             get
             {
-                _check();
-                if (_position > Length) { _position = Length; }
-                return _position;
+                lock (_provider)
+                {
+
+                    _check();
+                    if (_position > Length) { _position = Length; }
+                    return _position;
+                }
             }
             set
             {
-                _check();
-                if (value > Length)
+                lock (_provider)
                 {
-                    throw new InvalidOperationException($"Cannot set position after eof, {value}/{Length}");
+
+                    _check();
+                    if (value > Length)
+                    {
+                        throw new InvalidOperationException($"Cannot set position after eof, {value}/{Length}");
+                    }
+                    _position = value;
                 }
-                _position = value;
             }
         }
         public override void Flush()
         {
-            _check();
-            _provider.Flush();
+            lock (_provider)
+            {
+
+                _check();
+                _provider.Flush();
+            }
         }
 
         public override int Read(byte[] buffer, int offset, int count)
