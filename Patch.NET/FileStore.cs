@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -55,6 +56,18 @@ namespace PatchDotNet
                     var existing = Patches[pa.ID];
                     throw new ArgumentException($"GUID exists: {pa.ID}:{pa.Path}, {existing.Path}");
                 }
+                else if (!Patches.ContainsKey(pa.ParentID))
+                {
+                    if (deleteMissingPatches)
+                    {
+                        deletedPatches.Add(path);
+                        continue;
+                    }
+                    else
+                    {
+                        throw new FileNotFoundException("Failed to locate patch: " + path);
+                    }
+                }
                 Patches.Add(pa.ID, pa);
             }
             RebuildTree();
@@ -73,30 +86,57 @@ namespace PatchDotNet
                 parent.Children.Add(p);
             }
         }
-        public bool Defrag(Guid patch,Func<int,int,long,long,bool> mergeConfirm=null)
+        public bool Merge(Guid patch, int level, string output, string name, Func<int, int, long, long, bool> mergeConfirm = null)
         {
+            var toMerge = BuildChain(patch);
+            toMerge = toMerge.Skip(toMerge.Count - level).ToList();
+            if (toMerge.Take(toMerge.Count - 1).Where(x => x.Children.Count > 1).Any())
+            {
+                throw new InvalidOperationException("Cannot merge some patches because there're other patches that depend on them");
+            }
+            var tempPath = output + ".merging";
             var source = Patches[patch];
-            var tempPath = source.Path + ".defragging";
             var map = source.Path + ".blockmap";
+            var children = source.Children.Select(x => new Patch(x.Path, true)).ToArray();
+            var parent = toMerge.First().Parent;
             try
             {
                 if (File.Exists(map)) { File.Delete(map); } // Delete cached blockmap
                 using var prov = GetProvider(source, false);
-                if (!prov.Merge(1, tempPath, source.Name, source.Children.Select(x => new Patch(x.Path, true)).ToArray(),mergeConfirm))
+                if (!prov.Merge(level, tempPath, name, children, mergeConfirm))
                 {
                     return false;
                 }
+                children.ForEach(x => x.Dispose());
                 prov.Dispose();
-                File.Move(source.Path, source.Path + ".old");
-                File.Move(tempPath, source.Path);
-                File.Delete(source.Path + ".old");
+                toMerge.ForEach(x =>
+                {
+                    File.Move(x.Path,x.Path + ".old");
+                });
+                File.Move(tempPath, output);
+                toMerge.ForEach(x =>
+                {
+                    Patches.Remove(x);
+                    File.Delete(x.Path + ".old");
+                });
+                var n = new PatchNode(output);
+                Patches.Add(n, n);
+                RebuildTree();
             }
             catch
             {
                 if (File.Exists(tempPath)) { File.Delete(tempPath); }
                 throw;
             }
+            Reflect();
             return true;
+        }
+        public bool Optimize(Guid patch, Func<int, int, long, long, bool> mergeConfirm = null)
+        {
+            var p = Patches[patch];
+
+            if (p.IsRoot) { throw new InvalidOperationException("Invalid patch"); }
+            return Merge(patch, 1, p.Path, p.Name, mergeConfirm);
         }
         public FileProvider GetProvider(Guid patchId, bool canWrite)
         {
@@ -104,14 +144,7 @@ namespace PatchDotNet
             {
                 throw new Exception("Please select a valid patch");
             }
-
-            List<PatchNode> chain = new() { Patches[patchId] };
-
-            // Build patch chain
-            while (chain[0].Parent != Root)
-            {
-                chain.Insert(0, chain[0].Parent);
-            }
+            var chain = BuildChain(patchId);
             if (canWrite && chain[^1].Children.Count > 0)
             {
                 throw new InvalidOperationException("Cannot open this patch as r/w because one or more patches depend on it");
@@ -145,6 +178,19 @@ namespace PatchDotNet
                 throw;
             }
 
+        }
+        public List<PatchNode> BuildChain(Guid patchId)
+        {
+            var p = Patches[patchId];
+            if (p.IsRoot) { throw new InvalidOperationException("Invalid patch"); }
+            List<PatchNode> chain = new() {p  };
+
+            // Build patch chain
+            while (chain[0].Parent != Root)
+            {
+                chain.Insert(0, chain[0].Parent);
+            }
+            return chain;
         }
         public void DisposeProvider(FileProvider p, bool saveMapping)
         {

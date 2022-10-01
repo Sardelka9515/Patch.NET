@@ -32,6 +32,7 @@ namespace PatchDotNet.TUI
         readonly Button Fork;
         readonly Button Delete;
         readonly Button Optimize;
+        readonly Button Merge;
         public PropertiesWindow() : base("Properties")
         {
             lName = new Label("Name:") { Width = 20 };
@@ -125,6 +126,39 @@ namespace PatchDotNet.TUI
                 Y = Pos.Y(Mount),
                 X = Pos.Right(Delete)
             };
+            Merge = new("Merge")
+            {
+                Y = Pos.Y(Mount),
+                X = Pos.Right(Optimize)
+            };
+            Merge.Clicked += (() =>
+            {
+                Try(() =>
+                {
+                    var d = new MergeDialog(SourcePatch);
+                    Application.Run(d);
+                    if (d.Canceled) { return; }
+                    if (Program.Provider != null && Program.Provider.Patches.Any(x => x.Path == SourcePatch.Path))
+                    {
+                        throw new Exception("Cannot merge a patch that's currently mounted");
+                    }
+                    if (Program.Store.Merge(SourcePatch,int.Parse((string)d.MergeLevel.Text)
+                        , (string)d.MergedPath.Text, (string)d.Name.Text, (c, a, cLen, nLen) =>
+                    {
+                        return MessageBox.Query("Merge records",
+                            $"Current records: {c}" +
+                            $"\nAfter merge: {a}" +
+                            $"\nCurrent size: {Util.FormatSize(cLen)}" +
+                            $"\nMerged size: {Util.FormatSize(nLen)}", "OK", "Cancel") == 0;
+                    }))
+                    {
+                        MessageBox.Query("Info", "Merged", "OK");
+                    }
+                    Program.RebuildTree();
+                    Update();
+                });
+            });
+
             Optimize.Clicked+=(() =>
             {
                 Try(() =>
@@ -132,9 +166,9 @@ namespace PatchDotNet.TUI
                     
                     if (Program.Provider != null && Program.Provider.Patches.Any(x => x.Path == SourcePatch.Path))
                     {
-                        throw new Exception("Cannot defragment a patch that's currently mounted");
+                        throw new Exception("Cannot merge a patch that's currently mounted");
                     }
-                    if (Program.Store.Defrag(SourcePatch, (c,a,cLen,nLen) =>
+                    if (Program.Store.Optimize(SourcePatch, (c,a,cLen,nLen) =>
                     {
                         if (c <= a)
                         {
@@ -232,6 +266,7 @@ namespace PatchDotNet.TUI
             Add(Fork);
             Add(Delete);
             Add(Optimize);
+            Add(Merge);
         }
         private TreeNode _source;
         public void Update()
@@ -304,7 +339,7 @@ namespace PatchDotNet.TUI
             catch (Exception ex)
             {
 #if DEBUG
-                MessageBox.ErrorQuery("Error", ex.ToString(), "OK");throw;
+                MessageBox.ErrorQuery("Error", ex.ToString(), "OK");
 #else
                 MessageBox.ErrorQuery("Error", ex.Message, "OK");
 #endif

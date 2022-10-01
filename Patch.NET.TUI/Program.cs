@@ -251,7 +251,7 @@ namespace PatchDotNet.TUI
         }
         public static void RebuildTree(Guid toExpand = default)
         {
-
+            Store.RebuildTree();
             PatchView.ColorGetter = (node) =>
             {
                 if ((PatchNode)node.Tag == Provider?.CurrentGuid)
