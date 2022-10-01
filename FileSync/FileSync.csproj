@@ -4,7 +4,16 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="WatsonTcp" Version="4.8.14.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Patch.NET.Win32\Patch.NET.Win32.csproj" />
+    <ProjectReference Include="..\Patch.NET\Patch.NET.csproj" />
+  </ItemGroup>
 
 </Project>
