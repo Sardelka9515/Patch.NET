@@ -15,24 +15,23 @@ namespace PatchDotNet
         private readonly int _handle;
         private bool _disposed = false;
         private long _position;
+        private FileAccess _access;
+        private bool _canRead;
+        private bool _canWrite;
         public int Handle => _handle;
-        internal RoWStream(FileProvider provider, int fileHandle)
+        internal RoWStream(FileProvider provider, int fileHandle,FileAccess access)
         {
             _provider = provider;
             _handle = fileHandle;
+            _access = access;
+            _canRead = _access.HasFlag(FileAccess.Read);
+            _canWrite = _access.HasFlag(FileAccess.Write);
         }
-        public override bool CanRead => true;
+        public override bool CanRead => _canRead;
 
         public override bool CanSeek => true;
 
-        public override bool CanWrite
-        {
-            get
-            {
-                _check();
-                return _provider.CanWrite;
-            }
-        }
+        public override bool CanWrite => _canWrite;
 
         public override long Length
         {
@@ -85,6 +84,7 @@ namespace PatchDotNet
         public override int Read(byte[] buffer, int offset, int count)
         {
             _check();
+            if (!CanRead) { throw new NotSupportedException("Stream does not support reading"); }
             lock (_provider)
             {
 
@@ -96,7 +96,9 @@ namespace PatchDotNet
         }
         public override int ReadByte()
         {
-            _check();
+            _check(); 
+            if (!CanRead) { throw new NotSupportedException("Stream does not support reading"); }
+
             lock (_provider)
             {
                 _provider.Seek(Position);
@@ -120,16 +122,20 @@ namespace PatchDotNet
 
         public override void SetLength(long value)
         {
-            _check();
-            lock(_provider){
+            _check(); 
+            if (!CanWrite) { throw new NotSupportedException("Stream does not support writing"); }
+
+            lock (_provider){
                 _provider.SetLength(value);
             }
         }
 
         public override void Write(byte[] buffer, int offset, int count)
         {
-            _check();
-            lock(_provider){
+            _check(); 
+            if (!CanWrite) { throw new NotSupportedException("Stream does not support writing"); }
+
+            lock (_provider){
                 _provider.Seek(Position);
                 _provider.Write(buffer, offset, count);
                 Position += count;

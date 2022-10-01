@@ -99,11 +99,13 @@ namespace PatchDotNet
             var map = source.Path + ".blockmap";
             var children = source.Children.Select(x => new Patch(x.Path, true)).ToArray();
             var parent = toMerge.First().Parent;
+            FileProvider prov = null;
             try
             {
                 if (File.Exists(map)) { File.Delete(map); } // Delete cached blockmap
-                using var prov = GetProvider(source, false);
-                if (!prov.Merge(level, tempPath, name, children, mergeConfirm))
+                if (File.Exists(tempPath)) { File.Delete(tempPath); }
+                prov = GetProvider(source, false);
+                if (!prov.Merge(level, File.Create(tempPath), name, children, mergeConfirm))
                 {
                     return false;
                 }
@@ -111,7 +113,7 @@ namespace PatchDotNet
                 prov.Dispose();
                 toMerge.ForEach(x =>
                 {
-                    File.Move(x.Path,x.Path + ".old");
+                    File.Move(x.Path, x.Path + ".old");
                 });
                 File.Move(tempPath, output);
                 toMerge.ForEach(x =>
@@ -125,6 +127,7 @@ namespace PatchDotNet
             }
             catch
             {
+                try { prov?.Dispose(); } catch { }
                 if (File.Exists(tempPath)) { File.Delete(tempPath); }
                 throw;
             }
@@ -183,7 +186,7 @@ namespace PatchDotNet
         {
             var p = Patches[patchId];
             if (p.IsRoot) { throw new InvalidOperationException("Invalid patch"); }
-            List<PatchNode> chain = new() {p  };
+            List<PatchNode> chain = new() { p };
 
             // Build patch chain
             while (chain[0].Parent != Root)

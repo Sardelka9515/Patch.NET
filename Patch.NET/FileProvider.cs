@@ -81,11 +81,12 @@ namespace PatchDotNet
                 Current = p;
             }
         }
-        public RoWStream GetStream()
+        public RoWStream GetStream(FileAccess access)
         {
             lock (_streams)
             {
-                var s = new RoWStream(this, _streamHandle);
+                if (access.HasFlag(FileAccess.Write) && !CanWrite) { throw new UnauthorizedAccessException("Current provider does not support writing"); }
+                var s = new RoWStream(this, _streamHandle, FileAccess.ReadWrite);
                 _streams.Add(_streamHandle, s);
                 Console.WriteLine("Stream created " + _streamHandle);
                 _streamHandle++;
@@ -280,7 +281,7 @@ namespace PatchDotNet
         /// <param name="output">The path to save the merged patch. Changes will not be applied to current patches</param>
         /// <exception cref="InvalidOperationException"></exception>
         /// <exception cref="Exception"></exception>
-        public bool Merge(int level, string output, string name, Patch[] children, Func<int, int, long, long, bool> mergeConfirm = null)
+        public bool Merge(int level, Stream output, string name, Patch[] children, Func<int, int, long, long, bool> mergeConfirm = null,bool closeOutput=true)
         {
             lock (this)
             {
@@ -290,7 +291,7 @@ namespace PatchDotNet
                 var mergedCount = segments.Count + 1;
                 var currentCount = patches.Sum(x => x.RecordsCount);
                 Console.WriteLine($"Scanning done, records count after merge: {mergedCount}");
-                if (mergeConfirm?.Invoke(currentCount, mergedCount, patches.Sum(x => x.Length), segments.Sum(x => (long)(x.Item2 + sizeof(long) + sizeof(int)) ) + sizeof(long) + sizeof(int) + Patch.HeaderSize) == false)
+                if (mergeConfirm?.Invoke(currentCount, mergedCount, patches.Sum(x => x.Length), segments.Sum(x => (long)(x.Item2 + sizeof(long) + sizeof(int))) + sizeof(long) + sizeof(int) + Patch.HeaderSize) == false)
                 {
                     return false;
                 }
@@ -301,12 +302,8 @@ namespace PatchDotNet
                     return false;
                 }
                 Console.WriteLine("Saving merge results...");
-                if (File.Exists(output))
-                {
-                    throw new Exception("Output file already exists");
-                }
                 var pIndex = _patches.Count - level - 1;
-                using var patch = new Patch(output, true);
+                using var patch = new Patch(output);
                 if (pIndex >= 0)
                 {
                     _patches[pIndex].CreateChild(patch, name);
@@ -319,9 +316,16 @@ namespace PatchDotNet
                     patch.Parent = Guid.Empty;
                     patch.ParentLength = BaseStream.Length;
                 }
+
+                // Change ParentLength for chidren
+                foreach (var ch in children)
+                {
+                    ch.Parent = patch.Guid;
+                    ch.ParentLength = patch.Length;
+                }
                 patch.LastDefragmented = DateTime.Now;
                 patch.Guid = patches.Last().Guid;
-
+                // patch.BeginNonSeekableWriting(output);
                 patch.WriteResize(Length);
                 foreach (var s in segments)
                 {
@@ -330,14 +334,11 @@ namespace PatchDotNet
                     Read(buffer, 0, s.Item2);
                     patch.Write(s.Item1, buffer, 0, buffer.Length);
                 }
-
-                // Change ParentLength for chidren
-                foreach (var ch in children)
+                output.Flush();
+                if (closeOutput)
                 {
-                    ch.Parent = patch.Guid;
-                    ch.ParentLength = patch.Length;
+                    patch.Dispose();
                 }
-                patch.Dispose();
                 Console.WriteLine("Merge done");
                 return true;
             }

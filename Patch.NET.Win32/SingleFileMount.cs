@@ -66,7 +66,7 @@ namespace PatchDotNet.Win32
             streams = new FileInformation[0];
             return DokanResult.NotImplemented;
         }
-        
+
 
         public NtStatus SetFileTime(string fileName, DateTime? creationTime, DateTime? lastAccessTime,
             DateTime? lastWriteTime, IDokanFileInfo info)
@@ -217,7 +217,7 @@ namespace PatchDotNet.Win32
 
                 try
                 {
-                    info.Context = _provider.GetStream();
+                    info.Context = _provider.GetStream(access.HasFlag(FileAccess.WriteData)||access.HasFlag(FileAccess.WriteAttributes)||access.HasFlag(FileAccess.GenericWrite) ? System.IO.FileAccess.ReadWrite : System.IO.FileAccess.Read);
                     if (pathExists && (mode == FileMode.OpenOrCreate
                                        || mode == FileMode.Create))
                         result = DokanResult.AlreadyExists;
@@ -317,7 +317,7 @@ namespace PatchDotNet.Win32
             }
             if (info.Context == null) // memory mapped read
             {
-                using (var stream = _provider.GetStream())
+                using (var stream = _provider.GetStream(System.IO.FileAccess.Read))
                 {
                     lock (stream)
                     {
@@ -357,7 +357,7 @@ namespace PatchDotNet.Win32
             var append = offset == -1;
             if (info.Context == null)
             {
-                using (var stream = info.Context as RoWStream ?? _provider.GetStream())
+                using (var stream = info.Context as RoWStream ?? _provider.GetStream(System.IO.FileAccess.Write))
                 {
                     lock (stream)
                     {
