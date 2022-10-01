@@ -20,3 +20,6 @@ Write records will accumulate over time and could have a significant impact on p
 
 ## FileStore
 This class provides an directory-based abstraction for simplified patch hierarchy management.
+
+## BlockMap
+You can save the mapping to drastically improve startup performance
