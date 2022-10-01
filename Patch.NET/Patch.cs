@@ -25,6 +25,7 @@ namespace PatchDotNet
     public class Patch : IDisposable
     {
         #region HEADER
+        public const int HeaderSize = 4096;
 
         [HeaderOffset(0)]
         const int Generation = 2;
@@ -46,8 +47,8 @@ namespace PatchDotNet
         [HeaderOffset(36)]
         public DateTime LastDefragmented
         {
-            get => DateTime.FromBinary(BitConverter.ToInt64(GetHeader(36, 8)));
-            set => SetHeader(36, BitConverter.GetBytes(value.ToBinary()));
+            get => DateTime.FromBinary(BitConverter.ToInt64(GetHeader(36, 8))).ToLocalTime();
+            set => SetHeader(36, BitConverter.GetBytes(value.ToUniversalTime().ToBinary()));
         }
 
         [HeaderOffset(44)]
@@ -71,25 +72,34 @@ namespace PatchDotNet
         }
         #endregion
 
-        public string Path => _stream.Name;
+        public string Path => (_stream as FileStream).Name;
         public bool CanWrite => Writer != null;
         public DateTime CreationTime => _info.CreationTime;
         public DateTime LastAccessTime => _info.LastAccessTime;
         public DateTime LastWriteTime => _info.LastWriteTime;
-        private readonly FileStream _stream;
-        public readonly BinaryReader Reader;
-        public readonly BinaryWriter Writer;
+        public DateTime CreationTimeUtc => _info.CreationTimeUtc;
+        public DateTime LastAccessTimeUtc => _info.LastAccessTimeUtc;
+        public DateTime LastWriteTimeUtc => _info.LastWriteTimeUtc;
+        private Stream _stream;
+        public BinaryReader Reader;
+        public BinaryWriter Writer;
         private long _lastVirtualPosition = -1;
         private int _lastChunkSize;
         private bool _lastWrite = false;
-        private readonly FileInfo _info;
+        private FileInfo _info => new(Path);
+        /// <summary>
+        /// Gets the total amount of records in this patch, will only be valid after calling <see cref="ReadAllRecords(Action{long, long, int}, Action{long})"/> 
+        /// </summary>
+        public int RecordsCount { get; private set; }
         public long Length => _stream.Length;
-        public Patch(string path, bool canWrite)
+        public Patch(string path, bool canWrite) : this(new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, canWrite ? FileShare.Read : FileShare.ReadWrite))
         {
-            _stream = new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, canWrite ? FileShare.Read : FileShare.ReadWrite);
-            _stream.Position = 0;
-            Reader = new BinaryReader(_stream);
-            Writer = canWrite ? new BinaryWriter(_stream) : null;
+        }
+        public Patch(Stream stream)
+        {
+            _stream = stream;
+            var canWrite = _stream.CanWrite;
+            InitStream(stream);
             // Initialize file
             if (_stream.Length == 0)
             {
@@ -102,7 +112,7 @@ namespace PatchDotNet
                 Guid = Guid.NewGuid();
                 Parent = new Guid();
                 LastDefragmented = DateTime.MinValue;
-                _stream.SetLength(4096); // 4 KB reserved metadata space
+                _stream.SetLength(HeaderSize);
             }
             else
             {
@@ -112,8 +122,7 @@ namespace PatchDotNet
                     throw new NotSupportedException("Unsupported generation or file format: " + gen);
                 }
             }
-            _stream.Position = 4096;
-            _info = new(path);
+            ResetPointer();
         }
         internal void SetHeader(long offset, byte[] data)
         {
@@ -154,6 +163,13 @@ namespace PatchDotNet
                 return data;
             }
         }
+        /// <summary>
+        /// Set stream position to <see cref="HeaderSize"/> for reading records
+        /// </summary>
+        public void ResetPointer()
+        {
+            _stream.Position = HeaderSize;
+        }
         internal string GetHeaderString(long offset)
         {
             lock (this)
@@ -165,16 +181,81 @@ namespace PatchDotNet
                 return data;
             }
         }
-        public void CreateChildren(string path, string name)
+        public void CreateChild(string path, string name)
         {
-
             if (File.Exists(path)) { throw new InvalidOperationException("File already exists: " + path); }
             var p = new Patch(path, true);
+            CreateChild(p, name);
+            p.Dispose();
+        }
+        public void CreateChild(Patch p, string name)
+        {
             p.Parent = Guid;
             p.Attributes = Attributes;
             p.Name = name;
             p.ParentLength = Length;
-            p.Dispose();
+        }
+        public bool IsChildOf(Patch parent, long baseLength)
+        {
+            return parent == Parent && ParentLength == (parent?.Length ?? baseLength);
+        }
+        public void ReadAllRecords(Action<long, long, int> writeCallback, Action<long> resizeCallback, Func<long, long, bool> corruptConfirm = null)
+        {
+            lock (this)
+            {
+                RecordsCount = 0;
+                long lastIntacPos = _stream.Position = HeaderSize;
+                try
+                {
+
+                    while (ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
+                    {
+                        // Console.WriteLine($"{read} {type} {vPosOrSize} {chunkLen} {readPos}");
+                        if (type == RecordType.Write)
+                        {
+                            writeCallback?.Invoke(vPosOrSize, readPos, chunkLen);
+                        }
+                        else if (type == RecordType.SetLength)
+                        {
+                            resizeCallback?.Invoke(vPosOrSize);
+                        }
+                        RecordsCount++;
+                        lastIntacPos = _stream.Position;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (corruptConfirm?.Invoke(lastIntacPos, _stream.Length)==true)
+                    {
+                        if (!_stream.CanWrite)
+                        {
+                            if (_stream is FileStream fs)
+                            {
+                                var path = fs.Name;
+                                fs.Dispose();
+                                InitStream(File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read));
+                            }
+                        }
+                        else
+                        {
+                            throw new NotSupportedException("Stream does not support writing");
+                        }
+                        _stream.SetLength(lastIntacPos);
+                        _stream.Position = lastIntacPos;
+                    }
+                    else
+                    {
+                        throw new PatchCorrutpedException(lastIntacPos, "Corrupted record after " + lastIntacPos, ex);
+                    }
+                }
+                Console.WriteLine("Read " + RecordsCount + " records");
+            }
+        }
+        void InitStream(Stream s)
+        {
+            _stream = s;
+            Writer = s.CanWrite ? new(s) : null;
+            Reader = new(s);
         }
         public long Write(long virtualPosition, byte[] buffer, int index, int count)
         {
@@ -226,6 +307,7 @@ namespace PatchDotNet
                     _lastVirtualPosition = virtualPosition;
                     _lastChunkSize = count;
                     _lastWrite = true;
+                    RecordsCount++;
                 }
                 return _stream.Position - count;
             }
@@ -249,6 +331,7 @@ namespace PatchDotNet
                 // indicates that this is a resize record
                 Writer.Write(0);
                 _lastWrite = false;
+                RecordsCount++;
             }
         }
 
@@ -335,12 +418,30 @@ namespace PatchDotNet
         public DateTime LastDefragmented = DateTime.MinValue;
         public List<PatchNode> Children = new();
         public FileAttributes Attributes;
+        private bool _needUpdateRecords = true;
+        private long _recordsCount;
         public PatchNode(string path)
         {
             Path = path;
             Update();
         }
         public PatchNode() { IsRoot = true; }
+        public long GetRecordsCount(Func<long, long, bool> corruptConfirm = null)
+        {
+            if (_needUpdateRecords)
+            {
+                _needUpdateRecords = false;
+                if (IsRoot) { return 0; }
+                using var p = new Patch(Path, false);
+                p.ReadAllRecords(null, null, corruptConfirm);
+                p.Dispose();
+                return _recordsCount=p.RecordsCount;
+            }
+            else
+            {
+                return _recordsCount;
+            }
+        }
         public void Update(bool dispose = true)
         {
             if (IsRoot) { return; }
@@ -355,6 +456,7 @@ namespace PatchDotNet
             {
                 p.Dispose();
             }
+            _needUpdateRecords = true;
         }
         public static implicit operator Guid(PatchNode node)
         {

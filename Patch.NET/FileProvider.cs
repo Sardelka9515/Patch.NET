@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Security.AccessControl;
+using System.Reflection.Emit;
+
 namespace PatchDotNet
 {
     public class FileProvider : FileMapper, IDisposable
@@ -17,50 +19,50 @@ namespace PatchDotNet
         public readonly DateTime CreationTime;
         public DateTime LastAccessTime => Current.LastAccessTime;
         public DateTime LastWriteTime => Current.LastWriteTime;
-        public List<Patch> Patches => new(_patches);
+        public Patch[] Patches => _patches.ToArray();
         private Patch Current;
         private readonly List<Patch> _patches = new();
         private readonly Dictionary<int, RoWStream> _streams = new();
         private int _streamHandle = 0;
         readonly StreamWriter _debug;
         public readonly string BasePath;
-        public bool CanWrite => Current.CanWrite;
+        public bool CanWrite => Current?.CanWrite == true;
         public RoWStream[] Streams => _streams.Values.ToArray();
-        public FileProvider(string baseFile, bool canWrite, StreamWriter debugger = null, params string[] patches) : base(File.OpenRead(baseFile))
+        public FileProvider(BlockMap mapping, DateTime creationTime, StreamWriter debugger = null) : base(mapping.BaseStream)
+        {
+            Fragments = new(mapping.Fragments);
+            _patches = new(mapping.Patches);
+            BasePath = (BaseStream as FileStream)?.Name;
+            CreationTime = creationTime;
+            _debug = debugger;
+            Current = _patches.LastOrDefault();
+        }
+        public FileProvider(string basePath, bool canWrite, StreamWriter debugger, params string[] patches) :
+            this(File.Open(basePath,FileMode.Open,FileAccess.Read,FileShare.Read), new FileInfo(basePath).CreationTime, debugger,
+                patches.Select(x => new Patch(x, x == patches.Last() && canWrite)).ToArray())
+        { }
+        public FileProvider(Stream baseStream, DateTime creationTime, StreamWriter debugger = null, params Patch[] patches) : base(baseStream)
         {
             if (patches.Length == 0) { throw new InvalidOperationException("One or more patches must be specified"); }
-            BasePath = baseFile;
-            CreationTime = new FileInfo(baseFile).CreationTime;
+            BasePath = (baseStream as FileStream)?.Name;
+            CreationTime = creationTime;
             _debug = debugger;
             Patch parent = null;
             for (int i = 0; i < patches.Length; i++)
             {
-                // Console.WriteLine("Reading records from " + patches[i]);
-                var patch = new Patch(patches[i], i == patches.Length - 1 && canWrite);
-                if (parent != patch.Parent || patch.ParentLength != (parent?.Length ?? _baseStream.Length))
+                Console.WriteLine("Reading records from " + patches[i]);
+                var patch = patches[i];
+                if (!patch.IsChildOf(parent, BaseStream.Length))
                 {
-                    throw new ArgumentException($"The patch chain is broken at index {i}. Actual parent is {(Guid)parent}=>{parent?.Length ?? _baseStream.Length}, expecting {patch.Parent}=>{patch.ParentLength}");
+                    throw new BrokenPatchChainException($"The patch chain is broken at index {i}. Actual parent is {(Guid)parent}=>{parent?.Length ?? BaseStream.Length}, expecting {patch.Parent}=>{patch.ParentLength}");
                 }
                 _patches.Add(patch);
                 parent = patch;
-                int read = 0;
-                while (patch.ReadRecord(out var type, out var vPosOrSize, out var readPos, out var chunkLen))
-                {
-                    Console.WriteLine($"{read} {type} {vPosOrSize} {chunkLen} {readPos}");
-                    if (type == RecordType.Write)
-                    {
-                        MapRecord(vPosOrSize, readPos, chunkLen, patch.Reader.BaseStream, false);
-                    }
-                    else if (type == RecordType.SetLength)
-                    {
-                        Resize(vPosOrSize);
-                    }
-                    read++;
-
-                }
-                Console.WriteLine("Read " + read + " records");
+                patch.ReadAllRecords((pos, readPos, len) => MapRecord(pos, readPos, len, patch.Reader.BaseStream, false),
+                    (size) => Resize(size));
             }
-            Current = _patches[_patches.Count - 1];
+            Current = _patches.LastOrDefault();
+            Check();
         }
 
         /// <summary>
@@ -71,8 +73,8 @@ namespace PatchDotNet
         {
             lock (this)
             {
-                Flush(); 
-                Current.CreateChildren(path, name);
+                Flush();
+                Current.CreateChild(path, name);
                 var p = new Patch(path, true);
                 _patches.Add(p);
                 Current.Writer.Flush();
@@ -233,7 +235,7 @@ namespace PatchDotNet
                 {
                     var last = Fragments[i - 1];
                     var frag = Fragments[i];
-                    if (last.EndPosition + 1 != frag.StartPosition) { throw new Exception("Corrupted fragment at: " + i); }
+                    if (last.EndPosition + 1 != frag.StartPosition) { DumpFragments(); throw new Exception("Corrupted fragment at: " + i); }
                     else if (frag.EndPosition < frag.StartPosition - 1)
                     {
                         throw new Exception("invalid frag");
@@ -266,9 +268,113 @@ namespace PatchDotNet
                     s.Invalidate();
                 }
             }
-            _baseStream?.Close();
-            _baseStream?.Dispose();
+            BaseStream?.Close();
+            BaseStream?.Dispose();
             _debug?.Dispose();
+        }
+
+        /// <summary>
+        /// Defragment and merge one or multiple patches
+        /// </summary>
+        /// <param name="level">Specify the level to merge, e.g. 1 to defragment current patch only.</param>
+        /// <param name="output">The path to save the merged patch. Changes will not be applied to current patches</param>
+        /// <exception cref="InvalidOperationException"></exception>
+        /// <exception cref="Exception"></exception>
+        public bool Merge(int level, string output, string name, Patch[] children, Func<int, int,long,long, bool> mergeConfirm = null)
+        {
+            lock (this)
+            {
+                var segments = GetMergeResult(level);
+                var patches = _patches.Skip(_patches.Count - level);
+                var mergedCount = segments.Count + 1;
+                var currentCount = patches.Sum(x => x.RecordsCount);
+                Console.WriteLine($"Scanning done, records count after merge: {mergedCount}");
+                if (mergeConfirm?.Invoke(currentCount, mergedCount,patches.Sum(x=>x.Length),segments.Sum(x=>(long)(x.Item2 + sizeof(long) + sizeof(int)) + sizeof(long) + sizeof(int) + Patch.HeaderSize)) == false)
+                {
+                    return false;
+                }
+                else if (patches.Count() == 1 && currentCount <= mergedCount)
+                {
+                    Console.WriteLine("Last: " + patches.Last().Path);
+                    Console.WriteLine($"There's no need to defragment, records count are the same or less: {currentCount}, {mergedCount}");
+                    return false;
+                }
+                Console.WriteLine("Saving merge results...");
+                if (File.Exists(output))
+                {
+                    throw new Exception("Output file already exists");
+                }
+                var pIndex = _patches.Count - level - 1;
+                using var patch = new Patch(output, true);
+                if (pIndex >= 0)
+                {
+                    _patches[pIndex].CreateChild(patch, name);
+                }
+                else
+                {
+                    // Parent is Base
+                    patch.Name = name;
+                    patch.Attributes = BasePath==null?FileAttributes.Archive:new FileInfo(BasePath).Attributes;
+                    patch.Parent = Guid.Empty;
+                    patch.ParentLength = BaseStream.Length;
+                }
+                patch.LastDefragmented = DateTime.Now;
+                if (level == 1) { patch.Guid = Current.Guid; }
+
+                patch.WriteResize(Length);
+                foreach (var s in segments)
+                {
+                    var buffer = new byte[s.Item2];
+                    Seek(s.Item1);
+                    Read(buffer, 0, s.Item2);
+                    patch.Write(s.Item1, buffer, 0, buffer.Length);
+                }
+
+                // Change ParentLength for chidren
+                foreach (var ch in children)
+                {
+                    ch.ParentLength = patch.Length;
+                }
+                Console.WriteLine("Merge done");
+                return true;
+            }
+
+
+        }
+        public List<(long, int)> GetMergeResult(int level)
+        {
+            lock (this)
+            {
+
+                if (level <= 0)
+                {
+                    throw new InvalidOperationException("Merge level must be greater than zero");
+                }
+                var patches = _patches.Skip(_patches.Count - level);
+                Console.WriteLine($"Scanning mergeable fragments with {patches.Count()} patches");
+                Check();
+                HashSet<Stream> streams = new(patches.Select(x => x.Reader.BaseStream));
+                List<(long, int)> segments = new();
+                for (int i = 0; i < Fragments.Count; i++)
+                {
+                    if (Fragments[i].Length > int.MaxValue || !streams.Contains(Fragments[i].Stream)) { continue; }
+                    var start = Fragments[i].StartPosition;
+                    long end = Fragments[i].EndPosition;
+                    for (; i < Fragments.Count; i++)
+                    {
+                        if (streams.Contains(Fragments[i].Stream) && (Fragments[i].EndPosition - start + 1) <= int.MaxValue)
+                        {
+                            end = Fragments[i].EndPosition;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    segments.Add((start, (int)(end - start + 1)));
+                }
+                return segments;
+            }
         }
     }
 }

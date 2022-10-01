@@ -76,9 +76,11 @@ namespace PatchDotNet.TUI
                     new MenuItem ("Recover...", "",()=>Recover()),
                     new MenuItem ("Quit", "", () => {Close(); Top.Running = false; })
                 }),
+                /*
                 new MenuBarItem ("Edit", new MenuItem [] {
                     mountItem
                 })
+                */
             });
             Properties = new()
             {
@@ -150,12 +152,15 @@ namespace PatchDotNet.TUI
             }
             else
             {
-                Provider.Dispose();
-                Provider = null;
+                disp();
                 throw new PlatformNotSupportedException("This platform does not currently support virtual file mount");
             }
-            Provider.Dispose();
-            Provider = null;
+            disp();
+            void disp()
+            {
+                Store.DisposeProvider(Provider,true);
+                Provider = null;
+            }
         }
 
         public static void Mount()

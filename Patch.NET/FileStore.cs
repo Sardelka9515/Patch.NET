@@ -73,6 +73,31 @@ namespace PatchDotNet
                 parent.Children.Add(p);
             }
         }
+        public bool Defrag(Guid patch,Func<int,int,long,long,bool> mergeConfirm=null)
+        {
+            var source = Patches[patch];
+            var tempPath = source.Path + ".defragging";
+            var map = source.Path + ".blockmap";
+            try
+            {
+                if (File.Exists(map)) { File.Delete(map); } // Delete cached blockmap
+                using var prov = GetProvider(source, false);
+                if (!prov.Merge(1, tempPath, source.Name, source.Children.Select(x => new Patch(x.Path, true)).ToArray(),mergeConfirm))
+                {
+                    return false;
+                }
+                prov.Dispose();
+                File.Move(source.Path, source.Path + ".old");
+                File.Move(tempPath, source.Path);
+                File.Delete(source.Path + ".old");
+            }
+            catch
+            {
+                if (File.Exists(tempPath)) { File.Delete(tempPath); }
+                throw;
+            }
+            return true;
+        }
         public FileProvider GetProvider(Guid patchId, bool canWrite)
         {
             if (patchId == default && !Patches.ContainsKey(patchId))
@@ -91,7 +116,48 @@ namespace PatchDotNet
             {
                 throw new InvalidOperationException("Cannot open this patch as r/w because one or more patches depend on it");
             }
-            return new FileProvider(BaseFile, canWrite, null, chain.Select(x => x.Path).ToArray());
+            var last = chain.Last();
+            var mapping = chain.Last().Path + ".blockmap";
+            var info = new FileInfo(BaseFile);
+            var bs = info.Open(FileMode.Open, FileAccess.Read);
+            var patches = chain.Select(x => new Patch(x.Path, x == last && canWrite)).ToArray();
+            try
+            {
+
+                if (File.Exists(mapping))
+                {
+                    try
+                    {
+                        var map = new BlockMap(File.OpenRead(mapping), bs, patches);
+                        return new FileProvider(map, info.CreationTime);
+                    }
+                    catch (OutdatedMappingException ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
+                }
+                return new FileProvider(bs, info.CreationTime, null, patches);
+            }
+            catch
+            {
+                bs.Dispose();
+                patches.ForEach(x => x.Dispose());
+                throw;
+            }
+
+        }
+        public void DisposeProvider(FileProvider p, bool saveMapping)
+        {
+            if (saveMapping)
+            {
+                var map = new BlockMap(p);
+                var pa = p.Patches.LastOrDefault();
+                if (pa != null)
+                {
+                    map.Save(pa.Path + ".blockmap");
+                }
+            }
+            p.Dispose();
         }
 
         /// <summary>
@@ -126,7 +192,7 @@ namespace PatchDotNet
             if (!Patches.TryGetValue(parentId, out var parent)) { throw new KeyNotFoundException("Specified parent does not exist: " + parentId); }
             parent.Update();
             using var p = new Patch(parent.Path, false);
-            p.CreateChildren(path,name);
+            p.CreateChild(path, name);
             var node = new PatchNode(path);
             Patches.Add(node.ID, node);
             RebuildTree();
@@ -177,6 +243,7 @@ namespace PatchDotNet
         public void RecoverOrphanPatch(string path)
         {
             var p = new PatchNode(path);
+            if (Patches.ContainsKey(p.ID)) { throw new InvalidOperationException("Specified patch already exists in this FileStore"); }
             if (!Patches.ContainsKey(p.ParentID) || p.ID == Guid.Empty)
             {
                 throw new KeyNotFoundException("Patch parent not found in this FileStore");

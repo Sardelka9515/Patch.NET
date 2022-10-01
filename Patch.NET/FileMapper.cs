@@ -6,8 +6,8 @@ namespace PatchDotNet
     public class FileMapper
     {
         public long Length => Fragments[Fragments.Count - 1].EndPosition + 1;
-        protected Stream _baseStream;
-        protected List<FileFragement> Fragments = new List<FileFragement>();
+        public Stream BaseStream { get;private set; }
+        internal List<FileFragement> Fragments = new List<FileFragement>();
         /// <summary>
         /// Dummy fragment used to conduct binary search
         /// </summary>
@@ -22,7 +22,7 @@ namespace PatchDotNet
         /// <param name="baseStream"></param>
         public FileMapper(Stream baseStream)
         {
-            _baseStream = baseStream;
+            BaseStream = baseStream;
             Fragments.Add(
                 new FileFragement
                 {
@@ -202,7 +202,7 @@ namespace PatchDotNet
             for (int i = 0; i < Fragments.Count; i++)
             {
                 var f = Fragments[i];
-                Console.WriteLine($"{i}[{f.StartPosition}, {f.Length}, {f.EndPosition}] => {f.ReadPosition}");
+                Console.WriteLine($"{i}[{f.StartPosition}, {f.Length}, {f.EndPosition}] => {f.ReadPosition} : {(f.Stream as FileStream)?.Name}");
             }
         }
     }

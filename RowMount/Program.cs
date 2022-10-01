@@ -69,13 +69,14 @@ namespace RoWMount
             }
             var path = cs[0];
             var parent = cs.Length > 1 ? cs[1] : null;
+            var name = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss");
             if (parent != null)
             {
-                store.CreatePatch(Guid.Parse(parent), path);
+                store.CreatePatch(Guid.Parse(parent), path,name);
             }
             else
             {
-                store.CreatePatch(path);
+                store.CreatePatch(path,name);
             }
         }
 
@@ -162,7 +163,7 @@ namespace RoWMount
                     case "unmount": Console.Clear(); goto stop;
                     case "check": provider.Check(); break;
                     case "flush": provider.Flush(); break;
-                    case "create": store.CreatePatch(provider, cs[1]); break;
+                    case "create": store.CreatePatch(provider, cs[1], cs[2]); break;
                     case "read":
                         var st = provider.GetStream();
                         st.Position = long.Parse(cs[1]);

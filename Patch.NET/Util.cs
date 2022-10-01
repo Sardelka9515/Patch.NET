@@ -85,7 +85,7 @@ namespace PatchDotNet
         }
         public static DateTime GetDateTime(this byte[] bs)
         {
-            return new(BitConverter.ToInt64(bs));
+            return DateTime.FromBinary(BitConverter.ToInt64(bs));
         }
         public static string FormatSize(double len)
         {

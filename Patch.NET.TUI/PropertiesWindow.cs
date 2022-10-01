@@ -19,16 +19,19 @@ namespace PatchDotNet.TUI
         readonly Label lDefragmented;
         readonly Label lSize;
         readonly Label lPath;
+        readonly Label lRecordsCount;
         readonly TextField Name;
         readonly Label ID;
         readonly Label Parent;
         readonly Label Defragmented;
+        readonly Label RecordsCount;
         readonly Label Size;
         readonly Label Path;
         readonly Button Save;
         readonly Button Mount;
         readonly Button Fork;
         readonly Button Delete;
+        readonly Button Optimize;
         public PropertiesWindow() : base("Properties")
         {
             lName = new Label("Name:") { Width = 20 };
@@ -37,6 +40,7 @@ namespace PatchDotNet.TUI
             lDefragmented = new Label("Defragmented:") { Width = 20, Y = Pos.Bottom(lParent) };
             lSize = new Label("Size:") { Width = 20, Y = Pos.Bottom(lDefragmented) };
             lPath = new Label("Path:") { Width = 20, Y = Pos.Bottom(lSize) };
+            lRecordsCount = new Label("Records:") { Width = 20, Y = Pos.Bottom(lPath) };
 
 
             Add(lName);
@@ -45,6 +49,7 @@ namespace PatchDotNet.TUI
             Add(lDefragmented);
             Add(lSize);
             Add(lPath);
+            // Add(lRecordsCount);
 
             Name = new TextField()
             {
@@ -82,12 +87,19 @@ namespace PatchDotNet.TUI
                 Y = Pos.Y(lPath),
                 Width = Dim.Fill(10),
             };
+            RecordsCount = new()
+            {
+                X = Pos.Right(lRecordsCount),
+                Y = Pos.Y(lRecordsCount),
+                Width = Dim.Fill(10),
+            };
             Add(Name);
             Add(ID);
             Add(Parent);
             Add(Defragmented);
             Add(Size);
             Add(Path);
+            // Add(RecordsCount);
 
             Save = new("Save")
             {
@@ -108,6 +120,41 @@ namespace PatchDotNet.TUI
                 Y = Pos.Y(Mount),
                 X = Pos.Right(Fork)
             };
+            Optimize = new("Optimize")
+            {
+                Y = Pos.Y(Mount),
+                X = Pos.Right(Delete)
+            };
+            Optimize.Clicked+=(() =>
+            {
+                Try(() =>
+                {
+                    
+                    if (Program.Provider != null && Program.Provider.Patches.Any(x => x.Path == SourcePatch.Path))
+                    {
+                        throw new Exception("Cannot defragment a patch that's currently mounted");
+                    }
+                    if (Program.Store.Defrag(SourcePatch, (c,a,cLen,nLen) =>
+                    {
+                        if (c <= a)
+                        {
+
+                            MessageBox.Query("Info", $"No need to optimize ({c}, {a})", "OK");
+                            return false;
+                        }
+                        return MessageBox.Query("Merge records",
+                            $"Current records: {c}" +
+                            $"\nAfter merge: {a}" +
+                            $"\nCurrent size: {Util.FormatSize(cLen)}" +
+                            $"\nMerged size: {Util.FormatSize(nLen)}", "OK", "Cancel") == 0;
+                    }))
+                    {
+                        MessageBox.Query("Info", "Optimized", "OK");
+                    }
+                    Update();
+                });
+            });
+
             Delete.Clicked += () =>
             {
                 Try(() =>
@@ -184,6 +231,7 @@ namespace PatchDotNet.TUI
             Add(Mount);
             Add(Fork);
             Add(Delete);
+            Add(Optimize);
         }
         private TreeNode _source;
         public void Update()
@@ -196,6 +244,7 @@ namespace PatchDotNet.TUI
                 Defragmented.Text = "";
                 Size.Text = "";
                 Path.Text = "";
+                RecordsCount.Text = "";
                 return;
             }
             pn.Update();
@@ -205,6 +254,10 @@ namespace PatchDotNet.TUI
             Defragmented.Text = pn.LastDefragmented.ToString();
             Size.Text = Util.FormatSize(new FileInfo(pn.Path).Length);
             Path.Text = pn.Path;
+            if (Program.Provider == null)
+            {
+                // RecordsCount.Text = pn.GetRecordsCount(CorruptConfirm).ToString();
+            }
 
             if (Program.Provider != null && Program.Provider.CurrentGuid == (Source?.Tag as PatchNode)?.ID)
             {
@@ -223,6 +276,11 @@ namespace PatchDotNet.TUI
                 Fork.Text = "Fork";
             }
 
+        }
+        public static bool CorruptConfirm(long pos,long length)
+        {
+            return MessageBox.ErrorQuery("Error", $"Corrupted record after position {pos}, do you want to discard the data after it?" +
+                $"\n({Util.FormatSize(length - pos)} data will be lost)", "OK", "Cancel") == 0 ;
         }
         public TreeNode Source
         {
@@ -246,7 +304,7 @@ namespace PatchDotNet.TUI
             catch (Exception ex)
             {
 #if DEBUG
-                MessageBox.ErrorQuery("Error", ex.ToString(), "OK");
+                MessageBox.ErrorQuery("Error", ex.ToString(), "OK");throw;
 #else
                 MessageBox.ErrorQuery("Error", ex.Message, "OK");
 #endif
