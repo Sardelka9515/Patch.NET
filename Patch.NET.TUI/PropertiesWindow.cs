@@ -154,12 +154,12 @@ namespace PatchDotNet.TUI
                     {
                         MessageBox.Query("Info", "Merged", "OK");
                     }
-                    Program.RebuildTree();
+                    Program.RebuildTree(SourcePatch);
                     Update();
                 });
             });
 
-            Optimize.Clicked+=(() =>
+            Optimize.Clicked+=() =>
             {
                 Try(() =>
                 {
@@ -187,7 +187,7 @@ namespace PatchDotNet.TUI
                     }
                     Update();
                 });
-            });
+            };
 
             Delete.Clicked += () =>
             {
@@ -208,7 +208,7 @@ namespace PatchDotNet.TUI
             {
                 Try(() =>
                 {
-
+                    Update();
                     var prov = Program.Provider;
                     var dialog = new CreatePatchDialog(Source.Tag as PatchNode);
                     Application.Run(dialog);

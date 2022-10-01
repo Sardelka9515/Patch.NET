@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,11 +19,7 @@ namespace PatchDotNet
         public readonly PatchNode Root;
         public readonly Dictionary<Guid, PatchNode> Patches = new();
         readonly FileStoreInfo _info;
-        public FileStore(FileStoreInfo info) : this(info, false, out _)
-        {
-
-        }
-        public FileStore(FileStoreInfo info, bool deleteMissingPatches, out List<string> deletedPatches)
+        public FileStore(FileStoreInfo info, List<string> deletedPatches = null)
         {
             deletedPatches = new();
             _info = info;
@@ -38,53 +36,66 @@ namespace PatchDotNet
             foreach (var p in info.Patches)
             {
                 var path = _info.ToAbsolute(p);
-                if (!File.Exists(path))
+                try
                 {
-                    if (deleteMissingPatches)
+
+                    if (!File.Exists(path))
+                    {
+                        throw new FileNotFoundException("Failed to locate patch: " + path);
+                    }
+                    var pa = new PatchNode(path);
+                    if (Patches.ContainsKey(pa.ID))
+                    {
+                        var existing = Patches[pa.ID];
+                        throw new ArgumentException($"GUID exists: {pa.ID}:{pa.Path}, {existing.Path}");
+                    }
+                    Patches.Add(pa.ID, pa);
+                }
+                catch
+                {
+                    if (deletedPatches != null)
                     {
                         deletedPatches.Add(path);
                         continue;
                     }
                     else
                     {
-                        throw new FileNotFoundException("Failed to locate patch: " + path);
+                        throw;
                     }
                 }
-                var pa = new PatchNode(path);
-                if (Patches.ContainsKey(pa.ID))
-                {
-                    var existing = Patches[pa.ID];
-                    throw new ArgumentException($"GUID exists: {pa.ID}:{pa.Path}, {existing.Path}");
-                }
-                else if (!Patches.ContainsKey(pa.ParentID))
-                {
-                    if (deleteMissingPatches)
-                    {
-                        deletedPatches.Add(path);
-                        continue;
-                    }
-                    else
-                    {
-                        throw new FileNotFoundException("Failed to locate patch: " + path);
-                    }
-                }
-                Patches.Add(pa.ID, pa);
             }
-            RebuildTree();
+            RebuildTree(deletedPatches);
             Reflect();
         }
-        public void RebuildTree()
+        public void RebuildTree(List<string> deletePatches = null)
         {
-
+            Patches.Values.ForEach(x => x.Children.Clear());
             // Build tree
             foreach (var p in Patches.Values)
             {
-                p.Children.Clear();
-                if (p == Root) { continue; }
-                var parent = Patches[p.ParentID];
-                p.Parent = parent;
-                parent.Children.Add(p);
+                try
+                {
+                    if (p == Root) { continue; }
+                    var parent = Patches[p.ParentID];
+                    p.Parent = parent;
+                    parent.Children.Add(p);
+                }
+                catch
+                {
+
+                    if (deletePatches != null)
+                    {
+                        Patches.Remove(p);
+                        deletePatches.Add(p.Path);
+                        continue;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
             }
+            if (deletePatches != null && deletePatches.Any()) { Reflect(); }
         }
         public bool Merge(Guid patch, int level, string output, string name, Func<int, int, long, long, bool> mergeConfirm = null)
         {
@@ -123,7 +134,7 @@ namespace PatchDotNet
                 });
                 var n = new PatchNode(output);
                 Patches.Add(n, n);
-                RebuildTree();
+                RebuildTree(new());
             }
             catch
             {
@@ -155,7 +166,7 @@ namespace PatchDotNet
             var last = chain.Last();
             var mapping = chain.Last().Path + ".blockmap";
             var info = new FileInfo(BaseFile);
-            var bs = info.Open(FileMode.Open, FileAccess.Read);
+            var bs = info.Open(FileMode.Open, FileAccess.Read, FileShare.Read);
             var patches = chain.Select(x => new Patch(x.Path, x == last && canWrite)).ToArray();
             try
             {

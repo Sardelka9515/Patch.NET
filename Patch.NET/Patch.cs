@@ -86,17 +86,30 @@ namespace PatchDotNet
         private long _lastVirtualPosition = -1;
         private int _lastChunkSize;
         private bool _lastWrite = false;
+        private bool _canSeek;
         private FileInfo _info => new(Path);
         /// <summary>
         /// Gets the total amount of records in this patch, will only be valid after calling <see cref="ReadAllRecords(Action{long, long, int}, Action{long})"/> 
         /// </summary>
         public int RecordsCount { get; private set; }
         public long Length => _stream.Length;
+        /// <summary>
+        /// Initilize a <see cref="Patch"/> for transferring over a non-seekable stream
+        /// </summary>
+        /// <remarks>Call <see cref="BeginNonSeekableWriting(Stream)"/> to start writing to the target stream</remarks>
+        public Patch() : this(new MemoryStream(HeaderSize))
+        {
+
+        }
         public Patch(string path, bool canWrite) : this(new FileStream(path, FileMode.OpenOrCreate, canWrite ? FileAccess.ReadWrite : FileAccess.Read, canWrite ? FileShare.Read : FileShare.ReadWrite))
         {
         }
         public Patch(Stream stream)
         {
+            if (!stream.CanSeek)
+            {
+                throw new NotSupportedException("Stream does not support seeking");
+            }
             _stream = stream;
             var canWrite = _stream.CanWrite;
             InitStream(stream);
@@ -225,7 +238,7 @@ namespace PatchDotNet
                 }
                 catch (Exception ex)
                 {
-                    if (corruptConfirm?.Invoke(lastIntacPos, _stream.Length)==true)
+                    if (corruptConfirm?.Invoke(lastIntacPos, _stream.Length) == true)
                     {
                         if (!_stream.CanWrite)
                         {
@@ -254,8 +267,21 @@ namespace PatchDotNet
         void InitStream(Stream s)
         {
             _stream = s;
+            _canSeek = s.CanSeek;
             Writer = s.CanWrite ? new(s) : null;
             Reader = new(s);
+        }
+        public void BeginNonSeekableWriting(Stream nonSeekableStream)
+        {
+            var ms = _stream as MemoryStream;
+
+            var header = ms?.GetBuffer();
+            if (header?.Length != HeaderSize)
+            {
+                throw new InvalidOperationException("Instance is not based on a MemoryStream or incorrect size");
+            }
+            nonSeekableStream.Write(header);
+            InitStream(nonSeekableStream);
         }
         public long Write(long virtualPosition, byte[] buffer, int index, int count)
         {
@@ -300,7 +326,7 @@ namespace PatchDotNet
                 else
                 {
 
-                    Writer.Seek(0, SeekOrigin.End);
+                    SeekToEnd();
                     Writer.Write(virtualPosition);
                     Writer.Write(count);
                     Writer.Write(buffer, index, count);
@@ -325,13 +351,20 @@ namespace PatchDotNet
             lock (this)
             {
 
-                Writer.Seek(0, SeekOrigin.End);
+                SeekToEnd();
                 Writer.Write(newSize);
 
                 // indicates that this is a resize record
                 Writer.Write(0);
                 _lastWrite = false;
                 RecordsCount++;
+            }
+        }
+        void SeekToEnd()
+        {
+            if (_canSeek)
+            {
+                Writer.Seek(0, SeekOrigin.End);
             }
         }
 
@@ -394,7 +427,10 @@ namespace PatchDotNet
                 return true;
             }
         }
-
+        public void Flush()
+        {
+            Writer?.Flush();
+        }
         public void Dispose()
         {
             _stream.Close();
@@ -435,7 +471,7 @@ namespace PatchDotNet
                 using var p = new Patch(Path, false);
                 p.ReadAllRecords(null, null, corruptConfirm);
                 p.Dispose();
-                return _recordsCount=p.RecordsCount;
+                return _recordsCount = p.RecordsCount;
             }
             else
             {

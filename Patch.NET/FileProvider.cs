@@ -81,12 +81,12 @@ namespace PatchDotNet
                 Current = p;
             }
         }
-        public RoWStream GetStream(FileAccess access)
+        public RoWStream GetStream(FileAccess access=FileAccess.ReadWrite)
         {
             lock (_streams)
             {
                 if (access.HasFlag(FileAccess.Write) && !CanWrite) { throw new UnauthorizedAccessException("Current provider does not support writing"); }
-                var s = new RoWStream(this, _streamHandle, FileAccess.ReadWrite);
+                var s = new RoWStream(this, _streamHandle, access);
                 _streams.Add(_streamHandle, s);
                 Console.WriteLine("Stream created " + _streamHandle);
                 _streamHandle++;
@@ -257,7 +257,7 @@ namespace PatchDotNet
         public void Flush()
         {
             _debug?.Flush();
-            Current.Writer?.Flush();
+            Current?.Flush();
         }
         public void Dispose()
         {
@@ -278,7 +278,7 @@ namespace PatchDotNet
         /// Defragment and merge one or multiple patches
         /// </summary>
         /// <param name="level">Specify the level to merge, e.g. 1 to defragment current patch only.</param>
-        /// <param name="output">The path to save the merged patch. Changes will not be applied to current patches</param>
+        /// <param name="output">The output stream to save merge result, wheather seekable or not (<see cref="System.Net.Sockets.NetworkStream"/>)</param>
         /// <exception cref="InvalidOperationException"></exception>
         /// <exception cref="Exception"></exception>
         public bool Merge(int level, Stream output, string name, Patch[] children, Func<int, int, long, long, bool> mergeConfirm = null,bool closeOutput=true)
@@ -290,8 +290,9 @@ namespace PatchDotNet
                 var patches = _patches.Skip(_patches.Count - level);
                 var mergedCount = segments.Count + 1;
                 var currentCount = patches.Sum(x => x.RecordsCount);
+                var mergedSize = segments.Sum(x => (long)( sizeof(long) + sizeof(int)+ x.Item2)) + sizeof(long) + sizeof(int) + Patch.HeaderSize;
                 Console.WriteLine($"Scanning done, records count after merge: {mergedCount}");
-                if (mergeConfirm?.Invoke(currentCount, mergedCount, patches.Sum(x => x.Length), segments.Sum(x => (long)(x.Item2 + sizeof(long) + sizeof(int))) + sizeof(long) + sizeof(int) + Patch.HeaderSize) == false)
+                if (mergeConfirm?.Invoke(currentCount, mergedCount, patches.Sum(x => x.Length), mergedSize) == false)
                 {
                     return false;
                 }
@@ -303,7 +304,7 @@ namespace PatchDotNet
                 }
                 Console.WriteLine("Saving merge results...");
                 var pIndex = _patches.Count - level - 1;
-                using var patch = new Patch(output);
+                using var patch = new Patch();
                 if (pIndex >= 0)
                 {
                     _patches[pIndex].CreateChild(patch, name);
@@ -316,16 +317,16 @@ namespace PatchDotNet
                     patch.Parent = Guid.Empty;
                     patch.ParentLength = BaseStream.Length;
                 }
+                patch.LastDefragmented = DateTime.Now;
+                patch.Guid = patches.Last().Guid;
 
-                // Change ParentLength for chidren
                 foreach (var ch in children)
                 {
                     ch.Parent = patch.Guid;
-                    ch.ParentLength = patch.Length;
+                    ch.ParentLength = mergedSize;
                 }
-                patch.LastDefragmented = DateTime.Now;
-                patch.Guid = patches.Last().Guid;
-                // patch.BeginNonSeekableWriting(output);
+
+                patch.BeginNonSeekableWriting(output);
                 patch.WriteResize(Length);
                 foreach (var s in segments)
                 {

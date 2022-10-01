@@ -75,8 +75,8 @@ namespace PatchDotNet
             }
             if (closeStream)
             {
-                mapStream.Close();
-                mapStream.Dispose();
+                reader.Close();
+                reader.Dispose();
             }
             Console.WriteLine("Successfully loaded blockmap");
         }
@@ -95,7 +95,7 @@ namespace PatchDotNet
         }
         public void Save(Stream output)
         {
-            var writer = new BinaryWriter(output);
+            var writer = new BinaryWriter(new BufferedStream(output));
             writer.Write(Patches.Length);
             foreach (var p in Patches)
             {
@@ -124,6 +124,7 @@ namespace PatchDotNet
                 }
                 throw new Exception("Given fragment's stream not found in patches: " + (s as FileStream)?.Length);
             }
+            writer.Flush();
         }
         /// <summary>
         /// Free all streams and patches in this mapping, should not be called normally unless a exception were to be encountered

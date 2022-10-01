@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using DokanNet;
 using PatchDotNet.Win32;
 using System.Diagnostics;
+using Vanara.PInvoke;
 
 namespace PatchDotNet.TUI
 {
@@ -235,11 +236,12 @@ namespace PatchDotNet.TUI
             {
                 Store = new(FileStoreInfo.FromJson((string)open.FilePath));
             }
-            catch (FileNotFoundException)
+            catch(Exception ex)
             {
-                if (MessageBox.ErrorQuery("Oops", "Looks like some files are missing, would you like to remove these entries? \n(You can recover them later using File -> Recover...)", "Yes", "No") == 0)
+                if (MessageBox.ErrorQuery("Oops", "Error occurred when loading some entries, would you like to remove them? \n(You can recover them later using File -> Recover...) \n\n"+ex.Message, "Yes", "No") == 0)
                 {
-                    Store = new(FileStoreInfo.FromJson((string)open.FilePath), true, out var deleted);
+                    var deleted = new List<string>();
+                    Store = new(FileStoreInfo.FromJson((string)open.FilePath), deleted);
                     MessageBox.Query("Success", "The following entries have been removed:\n" + String.Join('\n', deleted), "OK");
                 }
                 else
@@ -247,11 +249,36 @@ namespace PatchDotNet.TUI
                     throw;
                 }
             }
-            RebuildTree(Guid.Parse(Settings.LastSelected));
+            if (Settings.LastSelected != null)
+            {
+
+                RebuildTree(Guid.Parse(Settings.LastSelected));
+            }
+            else
+            {
+                RebuildTree();
+            }
         }
         public static void RebuildTree(Guid toExpand = default)
         {
-            Store.RebuildTree();
+            try
+            {
+
+                Store.RebuildTree();
+            }
+            catch(Exception ex)
+            {
+                if (MessageBox.ErrorQuery("Oops", "Error occurred when loading some entries, would you like to remove them? \n(You can recover them later using File -> Recover...) \n\n" + ex, "Yes", "No") == 0)
+                {
+                    var deleted = new List<string>();
+                    Store.RebuildTree(deleted);
+                    MessageBox.Query("Success", "The following entries have been removed:\n" + String.Join('\n', deleted), "OK");
+                }
+                else
+                {
+                    throw;
+                }
+            }
             PatchView.ColorGetter = (node) =>
             {
                 if ((PatchNode)node.Tag == Provider?.CurrentGuid)
