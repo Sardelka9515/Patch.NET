@@ -18,8 +18,8 @@ You must call ``FileProvider.GetStream()`` to get a ``RoWStream`` instance that 
 ## Patch defragmentation/merge
 Write records will accumulate over time and could have a significant impact on performance and startup time. You can defragment a patch or merge multiple patches to optimize it.
 
+## BlockMap
+``FileProvider`` needs to read through all records in each patch and map them to the memory during initialization, which could have significant impact on startup time. The ``BlockMap`` class allows you to store the in-memory mapping to a output stream when the provider is about to be disposed, then read it from input stream next time to initialize a provider without needing to read through all records, which would dramatically improve the startup performancce.
+
 ## FileStore
 This class provides an directory-based abstraction for simplified patch hierarchy management.
-
-## BlockMap
-You can save the mapping to drastically improve startup performance
