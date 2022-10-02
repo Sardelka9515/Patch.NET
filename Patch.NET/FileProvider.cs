@@ -81,7 +81,7 @@ namespace PatchDotNet
                 Current = p;
             }
         }
-        public RoWStream GetStream(FileAccess access=FileAccess.ReadWrite)
+        public RoWStream GetStream(FileAccess access = FileAccess.ReadWrite)
         {
             lock (_streams)
             {
@@ -281,7 +281,7 @@ namespace PatchDotNet
         /// <param name="output">The output stream to save merge result, wheather seekable or not (<see cref="System.Net.Sockets.NetworkStream"/>)</param>
         /// <exception cref="InvalidOperationException"></exception>
         /// <exception cref="Exception"></exception>
-        public bool Merge(int level, Stream output, string name, Patch[] children, Func<int, int, long, long, bool> mergeConfirm = null,bool closeOutput=true)
+        public bool Merge(int level, Stream output, string name, Patch[] children, Func<int, int, long, long, bool> mergeConfirm = null, bool closeOutput = false)
         {
             lock (this)
             {
@@ -290,7 +290,7 @@ namespace PatchDotNet
                 var patches = _patches.Skip(_patches.Count - level);
                 var mergedCount = segments.Count + 1;
                 var currentCount = patches.Sum(x => x.RecordsCount);
-                var mergedSize = segments.Sum(x => (long)( sizeof(long) + sizeof(int)+ x.Item2)) + sizeof(long) + sizeof(int) + Patch.HeaderSize;
+                var mergedSize = segments.Sum(x => (long)(sizeof(long) + sizeof(int) + x.Item2)) + sizeof(long) + sizeof(int) + Patch.HeaderSize;
                 Console.WriteLine($"Scanning done, records count after merge: {mergedCount}");
                 if (mergeConfirm?.Invoke(currentCount, mergedCount, patches.Sum(x => x.Length), mergedSize) == false)
                 {

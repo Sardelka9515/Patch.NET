@@ -31,7 +31,6 @@ namespace PatchDotNet.TUI
         readonly Button Mount;
         readonly Button Fork;
         readonly Button Delete;
-        readonly Button Optimize;
         readonly Button Merge;
         public PropertiesWindow() : base("Properties")
         {
@@ -121,15 +120,10 @@ namespace PatchDotNet.TUI
                 Y = Pos.Y(Mount),
                 X = Pos.Right(Fork)
             };
-            Optimize = new("Optimize")
+            Merge = new("Optimize & Merge")
             {
                 Y = Pos.Y(Mount),
                 X = Pos.Right(Delete)
-            };
-            Merge = new("Merge")
-            {
-                Y = Pos.Y(Mount),
-                X = Pos.Right(Optimize)
             };
             Merge.Clicked += (() =>
             {
@@ -142,9 +136,15 @@ namespace PatchDotNet.TUI
                     {
                         throw new Exception("Cannot merge a patch that's currently mounted");
                     }
-                    if (Program.Store.Merge(SourcePatch,int.Parse((string)d.MergeLevel.Text)
+                    var level = int.Parse((string)d.MergeLevel.Text);
+                    if (Program.Store.Merge(SourcePatch,level
                         , (string)d.MergedPath.Text, (string)d.Name.Text, (c, a, cLen, nLen) =>
                     {
+                        if (c <= a && level==1)
+                        {
+                            MessageBox.Query("Hmm", $"No need to merge {c}, {a}", "OK");
+                            return false;
+                        }
                         return MessageBox.Query("Merge records",
                             $"Current records: {c}" +
                             $"\nAfter merge: {a}" +
@@ -158,36 +158,6 @@ namespace PatchDotNet.TUI
                     Update();
                 });
             });
-
-            Optimize.Clicked+=() =>
-            {
-                Try(() =>
-                {
-                    
-                    if (Program.Provider != null && Program.Provider.Patches.Any(x => x.Path == SourcePatch.Path))
-                    {
-                        throw new Exception("Cannot merge a patch that's currently mounted");
-                    }
-                    if (Program.Store.Optimize(SourcePatch, (c,a,cLen,nLen) =>
-                    {
-                        if (c <= a)
-                        {
-
-                            MessageBox.Query("Info", $"No need to optimize ({c}, {a})", "OK");
-                            return false;
-                        }
-                        return MessageBox.Query("Merge records",
-                            $"Current records: {c}" +
-                            $"\nAfter merge: {a}" +
-                            $"\nCurrent size: {Util.FormatSize(cLen)}" +
-                            $"\nMerged size: {Util.FormatSize(nLen)}", "OK", "Cancel") == 0;
-                    }))
-                    {
-                        MessageBox.Query("Info", "Optimized", "OK");
-                    }
-                    Update();
-                });
-            };
 
             Delete.Clicked += () =>
             {
@@ -265,7 +235,6 @@ namespace PatchDotNet.TUI
             Add(Mount);
             Add(Fork);
             Add(Delete);
-            Add(Optimize);
             Add(Merge);
         }
         private TreeNode _source;

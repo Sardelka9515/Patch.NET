@@ -105,7 +105,9 @@ namespace PatchDotNet
             {
                 throw new InvalidOperationException("Cannot merge some patches because there're other patches that depend on them");
             }
-            var tempPath = output + ".merging";
+            var tempPath = output + ".merging"; 
+
+            var tempStream = File.Create(tempPath);
             var source = Patches[patch];
             var map = source.Path + ".blockmap";
             var children = source.Children.Select(x => new Patch(x.Path, true)).ToArray();
@@ -114,14 +116,19 @@ namespace PatchDotNet
             try
             {
                 if (File.Exists(map)) { File.Delete(map); } // Delete cached blockmap
-                if (File.Exists(tempPath)) { File.Delete(tempPath); }
                 prov = GetProvider(source, false);
-                if (!prov.Merge(level, File.Create(tempPath), name, children, mergeConfirm))
+                if (!prov.Merge(level, tempStream, name, children, mergeConfirm))
                 {
+                    prov.Dispose();
+                    children.ForEach(x => x.Dispose());
+                    tempStream.Dispose();
+                    if (File.Exists(tempPath)) { File.Delete(tempPath); }
+
                     return false;
                 }
                 children.ForEach(x => x.Dispose());
                 prov.Dispose();
+                tempStream.Dispose();
                 toMerge.ForEach(x =>
                 {
                     File.Move(x.Path, x.Path + ".old");
@@ -139,7 +146,8 @@ namespace PatchDotNet
             catch
             {
                 try { prov?.Dispose(); } catch { }
-                if (File.Exists(tempPath)) { File.Delete(tempPath); }
+                try { tempStream?.Dispose(); } catch { }
+                if (File.Exists(tempPath)) { try { File.Delete(tempPath); } catch { } }
                 throw;
             }
             Reflect();

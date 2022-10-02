@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FileSync
+namespace FileSync.Client
 {
-    internal class ServerSettings : Settings
+    internal class ClientSettings : Settings
     {
-        public ServerSettings(string path) : base(path) { }
+        public ClientSettings(string path) : base(path) { }
         public string Server { get; set; } = "127.0.0.1:5728";
         public string BaseDirectory { get; set; } = "client";
         public string ClientID { get; set; }
