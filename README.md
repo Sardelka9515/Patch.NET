@@ -2,7 +2,7 @@
 Patch.NET is a Redirect-on-Write implementation in C#
 
 ## Redirect-on-Write (RoW)
-Inferred by it's name, when data is written to a RoW stream, it's not actually written to the base stream, but instead redirected to a patch stream/file.
+As the name suggests, when data is written to a RoW stream, it's not actually written to the base stream, but instead redirected to a patch stream/file.
 Each patch can be individually transferred and attached, allowing version control and efficient data sync.
 
 ## FileProvider & Patch chain
